@@ -24,7 +24,10 @@ const POSTHOG_ENDPOINT = 'https://us.i.posthog.com/capture/';
 const POSTHOG_TOKEN = 'phc_fx1Hhx9ucz8GuaJC8LVZWO8u03yXZZJJ6ObS4yplnaP';
 const SEND_TIMEOUT_MS = 5000;
 
-const PROJECT_ROOT = path.resolve(import.meta.dirname, '..');
+const PROJECT_ROOT = path.resolve(
+  import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
+  '..',
+);
 const STATE_YAML_PATH = path.join(PROJECT_ROOT, '.nanoclaw', 'state.yaml');
 
 // --- Args ---
@@ -63,6 +66,12 @@ function parseArgs(): {
         dryRun = true;
         break;
     }
+  }
+
+  if (args.includes('--set-never-ask')) {
+    setNeverAsk();
+    console.log('Diagnostics opt-out saved. You will not be asked again.');
+    process.exit(0);
   }
 
   if (!event) {

@@ -94,6 +94,6 @@ Use AskUserQuestion.
 
 - **Never ask again**: Run:
   ```bash
-  npx tsx -e "import { setNeverAsk } from './scripts/send-diagnostics.ts'; setNeverAsk();"
+  npx tsx scripts/send-diagnostics.ts --set-never-ask
   ```
   Confirm: "Got it — you won't be asked again."
