@@ -240,7 +240,7 @@ function buildContainerArgs(
   }
 
   // Pass third-party integration credentials from .env to the container
-  const thirdPartyEnvKeys = ['JIRA_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'];
+  const thirdPartyEnvKeys = ['JIRA_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'HUBSPOT_ACCESS_TOKEN'];
   const thirdPartyEnv = readEnvFile(thirdPartyEnvKeys);
   for (const key of thirdPartyEnvKeys) {
     if (thirdPartyEnv[key]) {
