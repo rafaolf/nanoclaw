@@ -409,6 +409,7 @@ async function runQuery(
         'NotebookEdit',
         'mcp__nanoclaw__*',
         'mcp__jira__*',
+        'mcp__hubspot__*',
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -431,6 +432,13 @@ async function runQuery(
             JIRA_URL: process.env.JIRA_URL ?? '',
             JIRA_EMAIL: process.env.JIRA_EMAIL ?? '',
             JIRA_API_TOKEN: process.env.JIRA_API_TOKEN ?? '',
+          },
+        },
+        hubspot: {
+          command: 'node',
+          args: [path.join(path.dirname(mcpServerPath), 'hubspot-mcp-stdio.js')],
+          env: {
+            HUBSPOT_ACCESS_TOKEN: process.env.HUBSPOT_ACCESS_TOKEN ?? '',
           },
         },
       },
