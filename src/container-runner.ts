@@ -269,7 +269,9 @@ function buildContainerArgs(
   // Mount Google Service Account JSON if present (read-only)
   const saFile = path.join(process.cwd(), 'google-service-account.json');
   if (fs.existsSync(saFile)) {
-    args.push(...readonlyMountArgs(saFile, '/workspace/google-service-account.json'));
+    args.push(
+      ...readonlyMountArgs(saFile, '/workspace/google-service-account.json'),
+    );
   }
 
   // Runtime-specific args for host gateway resolution

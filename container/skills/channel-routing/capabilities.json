@@ -1,0 +1,28 @@
+{
+  "capabilities": {
+    "crm": {
+      "name": "CRM (HubSpot)",
+      "description": "Contacts, deals, companies, pipeline, sales data",
+      "allowedGroups": ["discord_crm"],
+      "keywords": ["crm", "hubspot", "contact", "deal", "pipeline", "lead", "company", "sales", "prospect", "cliente", "negócio", "proposta", "funil"]
+    },
+    "pm": {
+      "name": "Project Management",
+      "description": "Tasks, sprints, issues, project status, Jira",
+      "allowedGroups": ["discord_pm"],
+      "keywords": ["jira", "sprint", "task", "issue", "backlog", "kanban", "ticket", "bug", "story", "epic", "tarefa", "projeto"]
+    },
+    "commercial": {
+      "name": "Commercial Proposals",
+      "description": "Proposals, quotes, pricing, contracts",
+      "allowedGroups": ["discord_commercial"],
+      "keywords": ["proposal", "quote", "pricing", "contract", "proposta comercial", "orçamento", "contrato", "precificação"]
+    }
+  },
+  "groupDirectory": {
+    "discord_crm": "CRM",
+    "discord_pm": "PM",
+    "discord_commercial": "Commercial Proposals",
+    "whatsapp_main": "Main (WhatsApp)"
+  }
+}
