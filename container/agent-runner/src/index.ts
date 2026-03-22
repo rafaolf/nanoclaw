@@ -407,7 +407,8 @@ async function runQuery(
         'TeamCreate', 'TeamDelete', 'SendMessage',
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
-        'mcp__nanoclaw__*'
+        'mcp__nanoclaw__*',
+        'mcp__jira__*',
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -421,6 +422,15 @@ async function runQuery(
             NANOCLAW_CHAT_JID: containerInput.chatJid,
             NANOCLAW_GROUP_FOLDER: containerInput.groupFolder,
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
+          },
+        },
+        jira: {
+          command: 'node',
+          args: [path.join(path.dirname(mcpServerPath), 'jira-mcp-stdio.js')],
+          env: {
+            JIRA_URL: process.env.JIRA_URL ?? '',
+            JIRA_EMAIL: process.env.JIRA_EMAIL ?? '',
+            JIRA_API_TOKEN: process.env.JIRA_API_TOKEN ?? '',
           },
         },
       },

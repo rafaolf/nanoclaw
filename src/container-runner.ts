@@ -16,6 +16,7 @@ import {
   IDLE_TIMEOUT,
   TIMEZONE,
 } from './config.js';
+import { readEnvFile } from './env.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
 import {
@@ -236,6 +237,15 @@ function buildContainerArgs(
     args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
   } else {
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+  }
+
+  // Pass third-party integration credentials from .env to the container
+  const thirdPartyEnvKeys = ['JIRA_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'];
+  const thirdPartyEnv = readEnvFile(thirdPartyEnvKeys);
+  for (const key of thirdPartyEnvKeys) {
+    if (thirdPartyEnv[key]) {
+      args.push('-e', `${key}=${thirdPartyEnv[key]}`);
+    }
   }
 
   // Runtime-specific args for host gateway resolution
