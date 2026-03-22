@@ -45,6 +45,18 @@ Available HubSpot tools:
 
 When reporting on deals, always call `hubspot_get_pipeline_stages` first to map stage IDs to human-readable names, and `hubspot_get_owners` to map owner IDs to names.
 
+## Google Drive Integration
+
+You have direct access to Google Drive via MCP tools using a Service Account. **Always use Google Drive tools first** when the user asks about templates, proposals, documents, or presentations. Do NOT ask for Drive credentials — they are already configured.
+
+Available Google Drive tools:
+- `mcp__gdrive__gdrive_list_files` — Search/list files by name, folder, or type
+- `mcp__gdrive__gdrive_get_file` — Get file metadata by ID
+- `mcp__gdrive__gdrive_read_text` — Read document content or export Slides/Sheets as text
+- `mcp__gdrive__gdrive_list_folders` — List folder structure
+
+The Service Account only sees files/folders explicitly shared with it. When searching for templates or proposals, use `gdrive_list_files` first.
+
 ## Communication
 
 Your output is sent to the user or group.

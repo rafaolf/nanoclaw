@@ -410,6 +410,7 @@ async function runQuery(
         'mcp__nanoclaw__*',
         'mcp__jira__*',
         'mcp__hubspot__*',
+        'mcp__gdrive__*',
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -439,6 +440,13 @@ async function runQuery(
           args: [path.join(path.dirname(mcpServerPath), 'hubspot-mcp-stdio.js')],
           env: {
             HUBSPOT_ACCESS_TOKEN: process.env.HUBSPOT_ACCESS_TOKEN ?? '',
+          },
+        },
+        gdrive: {
+          command: 'node',
+          args: [path.join(path.dirname(mcpServerPath), 'gdrive-mcp-stdio.js')],
+          env: {
+            GOOGLE_SERVICE_ACCOUNT_PATH: '/workspace/google-service-account.json',
           },
         },
       },

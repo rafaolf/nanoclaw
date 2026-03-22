@@ -216,6 +216,7 @@ function buildVolumeMounts(
 function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
+  groupFolder: string,
 ): string[] {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
@@ -240,12 +241,35 @@ function buildContainerArgs(
   }
 
   // Pass third-party integration credentials from .env to the container
-  const thirdPartyEnvKeys = ['JIRA_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'HUBSPOT_ACCESS_TOKEN'];
-  const thirdPartyEnv = readEnvFile(thirdPartyEnvKeys);
-  for (const key of thirdPartyEnvKeys) {
-    if (thirdPartyEnv[key]) {
-      args.push('-e', `${key}=${thirdPartyEnv[key]}`);
+  // Global credentials: available to all groups
+  const globalEnvKeys = ['JIRA_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'];
+  const globalEnv = readEnvFile(globalEnvKeys);
+  for (const key of globalEnvKeys) {
+    if (globalEnv[key]) {
+      args.push('-e', `${key}=${globalEnv[key]}`);
     }
+  }
+
+  // Group-scoped credentials: only injected into authorized groups (least privilege).
+  // Map each env key to the group folders allowed to receive it.
+  const scopedCredentials: Record<string, string[]> = {
+    HUBSPOT_ACCESS_TOKEN: ['discord_crm'],
+  };
+  const scopedKeys = Object.keys(scopedCredentials);
+  if (scopedKeys.length > 0) {
+    const scopedEnv = readEnvFile(scopedKeys);
+    for (const key of scopedKeys) {
+      if (!scopedEnv[key]) continue;
+      if (scopedCredentials[key].includes(groupFolder)) {
+        args.push('-e', `${key}=${scopedEnv[key]}`);
+      }
+    }
+  }
+
+  // Mount Google Service Account JSON if present (read-only)
+  const saFile = path.join(process.cwd(), 'google-service-account.json');
+  if (fs.existsSync(saFile)) {
+    args.push(...readonlyMountArgs(saFile, '/workspace/google-service-account.json'));
   }
 
   // Runtime-specific args for host gateway resolution
@@ -288,7 +312,7 @@ export async function runContainerAgent(
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
-  const containerArgs = buildContainerArgs(mounts, containerName);
+  const containerArgs = buildContainerArgs(mounts, containerName, group.folder);
 
   logger.debug(
     {
