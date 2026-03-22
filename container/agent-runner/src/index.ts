@@ -447,9 +447,10 @@ async function runQuery(
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
-        ...(process.env.JIRA_URL ? ['mcp__jira__*'] : []),
+...(process.env.JIRA_URL ? ['mcp__jira__*'] : []),
         ...(process.env.HUBSPOT_ACCESS_TOKEN ? ['mcp__hubspot__*'] : []),
         ...(fs.existsSync('/workspace/google-service-account.json') ? ['mcp__gdrive__*'] : []),
+        'mcp__gmail__*',
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -465,9 +466,7 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
-        // Only start integration MCP servers when credentials are configured.
-        // This avoids wasting resources and prevents agents from seeing tools
-        // that would fail at call time due to missing credentials.
+// Only start integration MCP servers when credentials are configured.
         ...(process.env.JIRA_URL ? {
           jira: {
             command: 'node',
@@ -497,6 +496,10 @@ async function runQuery(
             },
           },
         } : {}),
+        gmail: {
+          command: 'npx',
+          args: ['-y', '@gongrzhe/server-gmail-autoauth-mcp'],
+        },
       },
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook(containerInput.assistantName)] }],
