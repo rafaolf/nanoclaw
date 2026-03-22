@@ -70,9 +70,12 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 - **Main channel** - Your private channel (self-chat) for admin control; every group is completely isolated
 - **Scheduled tasks** - Recurring jobs that run Claude and can message you back
 - **Web access** - Search and fetch content from the Web
+- **Browser automation** - Full Chromium in containers with [agent-browser](https://github.com/nichochar/agent-browser) for web interaction, screenshots, PDFs, and auth state persistence
 - **Container isolation** - Agents are sandboxed in Docker (macOS/Linux), [Docker Sandboxes](docs/docker-sandboxes.md) (micro VM isolation), or Apple Container (macOS)
 - **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks
-- **Optional integrations** - Add Gmail (`/add-gmail`) and more via skills
+- **MCP integrations** - Built-in Jira Cloud, HubSpot CRM, and Google Drive MCP servers available inside containers. Add credentials to `.env` and they're available to agents.
+- **Media processing** - Add voice transcription (`/add-voice-transcription`), image vision (`/add-image-vision`), and PDF reading (`/add-pdf-reader`) via skills
+- **Optional integrations** - Add Gmail (`/add-gmail`), X/Twitter (`/x-integration`), Parallel AI research (`/add-parallel`), local Ollama models (`/add-ollama-tool`), and more via skills
 
 ## Usage
 
@@ -118,6 +121,7 @@ Skills we'd like to see:
 
 **Communication Channels**
 - `/add-signal` - Add Signal as a channel
+- `/add-sms` - Add SMS via Twilio or similar
 
 ## Requirements
 

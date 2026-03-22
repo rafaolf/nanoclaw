@@ -408,9 +408,9 @@ async function runQuery(
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
-        'mcp__jira__*',
-        'mcp__hubspot__*',
-        'mcp__gdrive__*',
+        ...(process.env.JIRA_URL ? ['mcp__jira__*'] : []),
+        ...(process.env.HUBSPOT_ACCESS_TOKEN ? ['mcp__hubspot__*'] : []),
+        ...(fs.existsSync('/workspace/google-service-account.json') ? ['mcp__gdrive__*'] : []),
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -426,29 +426,38 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
-        jira: {
-          command: 'node',
-          args: [path.join(path.dirname(mcpServerPath), 'jira-mcp-stdio.js')],
-          env: {
-            JIRA_URL: process.env.JIRA_URL ?? '',
-            JIRA_EMAIL: process.env.JIRA_EMAIL ?? '',
-            JIRA_API_TOKEN: process.env.JIRA_API_TOKEN ?? '',
+        // Only start integration MCP servers when credentials are configured.
+        // This avoids wasting resources and prevents agents from seeing tools
+        // that would fail at call time due to missing credentials.
+        ...(process.env.JIRA_URL ? {
+          jira: {
+            command: 'node',
+            args: [path.join(path.dirname(mcpServerPath), 'jira-mcp-stdio.js')],
+            env: {
+              JIRA_URL: process.env.JIRA_URL,
+              JIRA_EMAIL: process.env.JIRA_EMAIL ?? '',
+              JIRA_API_TOKEN: process.env.JIRA_API_TOKEN ?? '',
+            },
           },
-        },
-        hubspot: {
-          command: 'node',
-          args: [path.join(path.dirname(mcpServerPath), 'hubspot-mcp-stdio.js')],
-          env: {
-            HUBSPOT_ACCESS_TOKEN: process.env.HUBSPOT_ACCESS_TOKEN ?? '',
+        } : {}),
+        ...(process.env.HUBSPOT_ACCESS_TOKEN ? {
+          hubspot: {
+            command: 'node',
+            args: [path.join(path.dirname(mcpServerPath), 'hubspot-mcp-stdio.js')],
+            env: {
+              HUBSPOT_ACCESS_TOKEN: process.env.HUBSPOT_ACCESS_TOKEN,
+            },
           },
-        },
-        gdrive: {
-          command: 'node',
-          args: [path.join(path.dirname(mcpServerPath), 'gdrive-mcp-stdio.js')],
-          env: {
-            GOOGLE_SERVICE_ACCOUNT_PATH: '/workspace/google-service-account.json',
+        } : {}),
+        ...(fs.existsSync('/workspace/google-service-account.json') ? {
+          gdrive: {
+            command: 'node',
+            args: [path.join(path.dirname(mcpServerPath), 'gdrive-mcp-stdio.js')],
+            env: {
+              GOOGLE_SERVICE_ACCOUNT_PATH: '/workspace/google-service-account.json',
+            },
           },
-        },
+        } : {}),
       },
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook(containerInput.assistantName)] }],

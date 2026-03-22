@@ -47,35 +47,33 @@ When people contribute, they shouldn't add "Telegram support alongside WhatsApp.
 Skills we'd love contributors to build:
 
 ### Communication Channels
-Skills to add or switch to different messaging platforms:
-- `/add-telegram` - Add Telegram as an input channel
-- `/add-slack` - Add Slack as an input channel
-- `/add-discord` - Add Discord as an input channel
+- `/add-signal` - Add Signal as a channel
 - `/add-sms` - Add SMS via Twilio or similar
-- `/convert-to-telegram` - Replace WhatsApp with Telegram entirely
-
-### Container Runtime
-The project uses Docker by default (cross-platform). For macOS users who prefer Apple Container:
-- `/convert-to-apple-container` - Switch from Docker to Apple Container (macOS-only)
 
 ### Platform Support
-- `/setup-linux` - Make the full setup work on Linux (depends on Docker conversion)
 - `/setup-windows` - Windows support via WSL2 + Docker
+
+### Already Implemented
+The following skills from the original RFS have been built:
+- `/add-telegram`, `/add-slack`, `/add-discord`, `/add-gmail` - Messaging channels
+- `/convert-to-apple-container` - Apple Container runtime (macOS)
+- `/setup` - Works on both macOS and Linux
 
 ---
 
 ## Vision
 
-A personal Claude assistant accessible via WhatsApp, with minimal custom code.
+A personal Claude assistant accessible via multiple messaging channels, with minimal custom code.
 
 **Core components:**
 - **Claude Agent SDK** as the core agent
 - **Containers** for isolated agent execution (Linux VMs)
-- **WhatsApp** as the primary I/O channel
+- **Multi-channel messaging** - WhatsApp, Telegram, Discord, Slack, Gmail
 - **Persistent memory** per conversation and globally
 - **Scheduled tasks** that run Claude and can message back
 - **Web access** for search and browsing
 - **Browser automation** via agent-browser
+- **MCP integrations** - Jira, HubSpot, Google Drive
 
 **Implementation approach:**
 - Use existing tools (WhatsApp connector, Claude Agent SDK, MCP servers)
@@ -136,15 +134,24 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 
 ## Integration Points
 
-### WhatsApp
-- Using baileys library for WhatsApp Web connection
-- Messages stored in SQLite, polled by router
-- QR code authentication during setup
+### Messaging Channels
+- **WhatsApp** - baileys library, QR/pairing code auth, via `/add-whatsapp` skill
+- **Telegram** - Grammy library, bot token auth, via `/add-telegram` skill
+- **Discord** - discord.js, bot token auth, via `/add-discord` skill
+- **Slack** - Socket Mode (no public URL), bot + app tokens, via `/add-slack` skill
+- **Gmail** - OAuth2, tool-only or full channel mode, via `/add-gmail` skill
+
+All channels self-register at startup based on credential presence. Messages stored in SQLite, polled by router.
+
+### MCP Servers (Inside Containers)
+- **NanoClaw IPC** - `send_message`, `schedule_task`, `list_tasks`, `pause_task`, `resume_task`, `cancel_task`, `update_task`, `register_group`
+- **Jira Cloud** - `jira_search`, `jira_get_issue`, `jira_create_issue`, `jira_update_issue`, `jira_transition_issue`, `jira_add_comment`
+- **HubSpot CRM** - `hubspot_search_contacts`, `hubspot_list_contacts`, `hubspot_search_deals`, `hubspot_create_note`, `hubspot_update_contact`
+- **Google Drive** - `gdrive_list_files`, `gdrive_search_files`, `gdrive_get_file_content`, `gdrive_export_file` (Service Account auth)
 
 ### Scheduler
 - Built-in scheduler runs on the host, spawns containers for task execution
-- Custom `nanoclaw` MCP server (inside container) provides scheduling tools
-- Tools: `schedule_task`, `list_tasks`, `pause_task`, `resume_task`, `cancel_task`, `send_message`
+- Schedule types: cron expressions, intervals (ms), or one-time (ISO timestamp)
 - Tasks stored in SQLite with run history
 - Scheduler loop checks for due tasks every minute
 - Tasks execute Claude Agent SDK in containerized group context
