@@ -280,11 +280,11 @@ server.tool(
       }
     }
 
-    const data: Record<string, string | undefined> = {
+    const data: Record<string, string | boolean | undefined> = {
       type: 'update_task',
       taskId: args.task_id,
       groupFolder,
-      isMain: String(isMain),
+      isMain,
       timestamp: new Date().toISOString(),
     };
     if (args.prompt !== undefined) data.prompt = args.prompt;

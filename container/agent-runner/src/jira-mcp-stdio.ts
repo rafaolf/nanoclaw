@@ -6,11 +6,16 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { errorResult } from './mcp-utils.js';
 
-const JIRA_URL = process.env.JIRA_URL ?? '';
-const JIRA_EMAIL = process.env.JIRA_EMAIL ?? '';
-const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN ?? '';
+const JIRA_URL = process.env.JIRA_URL;
+const JIRA_EMAIL = process.env.JIRA_EMAIL;
+const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
 
+if (!JIRA_URL || !JIRA_EMAIL || !JIRA_API_TOKEN) {
+  console.error('JIRA_URL, JIRA_EMAIL, and JIRA_API_TOKEN must all be set — Jira MCP server cannot start.');
+  process.exit(1);
+}
 
 const authHeader = 'Basic ' + Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString('base64');
 
@@ -45,12 +50,16 @@ server.tool(
     fields: z.array(z.string()).optional().describe('Fields to include. Defaults to summary, status, assignee, priority, updated, duedate, issuetype'),
   },
   async ({ jql, max_results = 20, fields }) => {
-    const defaultFields = ['summary', 'status', 'assignee', 'priority', 'updated', 'duedate', 'issuetype', 'project'];
-    const requestedFields = fields ?? defaultFields;
-    const data = await jiraRequest(
-      `/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${Math.min(max_results, 50)}&fields=${requestedFields.join(',')}`
-    );
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const defaultFields = ['summary', 'status', 'assignee', 'priority', 'updated', 'duedate', 'issuetype', 'project'];
+      const requestedFields = fields ?? defaultFields;
+      const data = await jiraRequest(
+        `/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${Math.min(max_results, 50)}&fields=${requestedFields.join(',')}`
+      );
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -61,8 +70,12 @@ server.tool(
     issue_key: z.string().describe('Issue key, e.g. "PM-42"'),
   },
   async ({ issue_key }) => {
-    const data = await jiraRequest(`/issue/${issue_key}`);
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const data = await jiraRequest(`/issue/${encodeURIComponent(issue_key)}`);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -71,8 +84,12 @@ server.tool(
   'List all Jira projects accessible to the authenticated user.',
   {},
   async () => {
-    const data = await jiraRequest('/project');
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const data = await jiraRequest('/project');
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -90,24 +107,28 @@ server.tool(
     parent_key: z.string().optional().describe('Parent issue key for subtasks'),
   },
   async ({ project_key, summary, issue_type, description, assignee_account_id, priority, due_date, parent_key }) => {
-    const fields: Record<string, unknown> = {
-      project: { key: project_key },
-      summary,
-      issuetype: { name: issue_type },
-      ...(description && {
-        description: {
-          type: 'doc',
-          version: 1,
-          content: [{ type: 'paragraph', content: [{ type: 'text', text: description }] }],
-        },
-      }),
-      ...(assignee_account_id && { assignee: { accountId: assignee_account_id } }),
-      ...(priority && { priority: { name: priority } }),
-      ...(due_date && { duedate: due_date }),
-      ...(parent_key && { parent: { key: parent_key } }),
-    };
-    const data = await jiraRequest('/issue', 'POST', { fields });
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const fields: Record<string, unknown> = {
+        project: { key: project_key },
+        summary,
+        issuetype: { name: issue_type },
+        ...(description && {
+          description: {
+            type: 'doc',
+            version: 1,
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: description }] }],
+          },
+        }),
+        ...(assignee_account_id && { assignee: { accountId: assignee_account_id } }),
+        ...(priority && { priority: { name: priority } }),
+        ...(due_date && { duedate: due_date }),
+        ...(parent_key && { parent: { key: parent_key } }),
+      };
+      const data = await jiraRequest('/issue', 'POST', { fields });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -123,20 +144,24 @@ server.tool(
     due_date: z.string().optional().describe('New due date in YYYY-MM-DD format'),
   },
   async ({ issue_key, summary, description, assignee_account_id, priority, due_date }) => {
-    const fields: Record<string, unknown> = {};
-    if (summary) fields.summary = summary;
-    if (description) {
-      fields.description = {
-        type: 'doc',
-        version: 1,
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: description }] }],
-      };
+    try {
+      const fields: Record<string, unknown> = {};
+      if (summary) fields.summary = summary;
+      if (description) {
+        fields.description = {
+          type: 'doc',
+          version: 1,
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: description }] }],
+        };
+      }
+      if (assignee_account_id) fields.assignee = { accountId: assignee_account_id };
+      if (priority) fields.priority = { name: priority };
+      if (due_date) fields.duedate = due_date;
+      await jiraRequest(`/issue/${encodeURIComponent(issue_key)}`, 'PUT', { fields });
+      return { content: [{ type: 'text' as const, text: `Issue ${issue_key} updated successfully.` }] };
+    } catch (err) {
+      return errorResult(err);
     }
-    if (assignee_account_id) fields.assignee = { accountId: assignee_account_id };
-    if (priority) fields.priority = { name: priority };
-    if (due_date) fields.duedate = due_date;
-    await jiraRequest(`/issue/${issue_key}`, 'PUT', { fields });
-    return { content: [{ type: 'text' as const, text: `Issue ${issue_key} updated successfully.` }] };
   }
 );
 
@@ -148,16 +173,23 @@ server.tool(
     transition_name: z.string().describe('Target status name, e.g. "In Progress", "Done", "To Do"'),
   },
   async ({ issue_key, transition_name }) => {
-    const result = (await jiraRequest(`/issue/${issue_key}/transitions`)) as {
-      transitions: { id: string; name: string }[];
-    };
-    const match = result.transitions.find((t) => t.name.toLowerCase() === transition_name.toLowerCase());
-    if (!match) {
-      const available = result.transitions.map((t) => t.name).join(', ');
-      throw new Error(`Transition "${transition_name}" not found. Available: ${available}`);
+    try {
+      const result = (await jiraRequest(`/issue/${encodeURIComponent(issue_key)}/transitions`)) as {
+        transitions: { id: string; name: string }[];
+      };
+      const match = result.transitions.find((t) => t.name.toLowerCase() === transition_name.toLowerCase());
+      if (!match) {
+        const available = result.transitions.map((t) => t.name).join(', ');
+        return {
+          content: [{ type: 'text' as const, text: `Transition "${transition_name}" not found for ${issue_key}. Available transitions: ${available}` }],
+          isError: true as const,
+        };
+      }
+      await jiraRequest(`/issue/${encodeURIComponent(issue_key)}/transitions`, 'POST', { transition: { id: match.id } });
+      return { content: [{ type: 'text' as const, text: `Issue ${issue_key} transitioned to "${match.name}".` }] };
+    } catch (err) {
+      return errorResult(err);
     }
-    await jiraRequest(`/issue/${issue_key}/transitions`, 'POST', { transition: { id: match.id } });
-    return { content: [{ type: 'text' as const, text: `Issue ${issue_key} transitioned to "${match.name}".` }] };
   }
 );
 
@@ -169,15 +201,67 @@ server.tool(
     comment: z.string().describe('Comment text'),
   },
   async ({ issue_key, comment }) => {
-    const data = await jiraRequest(`/issue/${issue_key}/comment`, 'POST', {
-      body: {
-        type: 'doc',
-        version: 1,
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: comment }] }],
-      },
-    });
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const data = await jiraRequest(`/issue/${encodeURIComponent(issue_key)}/comment`, 'POST', {
+        body: {
+          type: 'doc',
+          version: 1,
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: comment }] }],
+        },
+      });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
+);
+
+server.tool(
+  'jira_get_my_issues',
+  'Get Jira issues assigned to the currently authenticated user, ordered by last updated.',
+  {
+    status: z.string().optional().describe('Filter by status, e.g. "In Progress", "To Do"'),
+    limit: z.number().optional().describe('Max results (default 20)'),
+  },
+  async ({ status, limit = 20 }) => {
+    try {
+      const parts = ['assignee = currentUser()'];
+      if (status) parts.push(`status = "${status}"`);
+      const jql = parts.join(' AND ') + ' ORDER BY updated DESC';
+      const fields = ['summary', 'status', 'priority', 'updated', 'duedate', 'issuetype', 'project'];
+      const data = await jiraRequest(
+        `/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${Math.min(limit, 50)}&fields=${fields.join(',')}`,
+      );
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  },
+);
+
+server.tool(
+  'jira_get_sprint_issues',
+  'Get Jira issues in the currently active sprint(s). Optionally filter by project or status.',
+  {
+    project_key: z.string().optional().describe('Project key to filter by, e.g. "PM"'),
+    status: z.string().optional().describe('Filter by status, e.g. "In Progress"'),
+    limit: z.number().optional().describe('Max results (default 30)'),
+  },
+  async ({ project_key, status, limit = 30 }) => {
+    try {
+      const parts = ['sprint in openSprints()'];
+      if (project_key) parts.push(`project = "${project_key}"`);
+      if (status) parts.push(`status = "${status}"`);
+      const jql = parts.join(' AND ') + ' ORDER BY rank ASC';
+      const fields = ['summary', 'status', 'assignee', 'priority', 'updated', 'duedate', 'issuetype', 'project'];
+      const data = await jiraRequest(
+        `/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${Math.min(limit, 50)}&fields=${fields.join(',')}`,
+      );
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  },
 );
 
 const transport = new StdioServerTransport();

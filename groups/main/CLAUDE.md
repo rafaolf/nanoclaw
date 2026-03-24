@@ -234,7 +234,7 @@ If the user wants to set up an allowlist, edit `~/.config/nanoclaw/sender-allowl
 
 Notes:
 - Your own messages (`is_from_me`) explicitly bypass the allowlist in trigger checks. Bot messages are filtered out by the database query before trigger evaluation, so they never reach the allowlist.
-- If the config file doesn't exist or is invalid, all senders are allowed (fail-open)
+- If the config file doesn't exist or is invalid, **all non-own senders are denied (fail-closed)**. Create the file to allow senders.
 - The config file is on the host at `~/.config/nanoclaw/sender-allowlist.json`, not inside the container
 
 ### Removing a Group
@@ -250,9 +250,38 @@ Read `/workspace/project/data/registered_groups.json` and format it nicely.
 
 ---
 
+## Per-Group Credentials
+
+Each group can declare additional env vars it should receive in `data/groups/{folder}/env.json` (array of key names from `.env`). Example for `data/groups/discord_crm/env.json`:
+```json
+["HUBSPOT_ACCESS_TOKEN"]
+```
+To revoke a credential, remove its key from the array. No restart needed — takes effect on the next container spawn.
+
+## IPC Audit Log
+
+All IPC write operations (send_message, schedule_task, pause/resume/cancel/update task, register_group, refresh_groups) are logged to the `ipc_audit` table in SQLite. Query it from the database:
+
+```bash
+sqlite3 /workspace/project/store/messages.db "
+  SELECT timestamp, source_group, operation, target, allowed, detail
+  FROM ipc_audit ORDER BY timestamp DESC LIMIT 50;
+"
+```
+
+`allowed = 1` means the operation succeeded; `allowed = 0` means it was blocked (unauthorized attempt).
+
 ## Global Memory
 
-You can read and write to `/workspace/project/groups/global/CLAUDE.md` for facts that should apply to all groups. Only update global memory when explicitly asked to "remember this globally" or similar.
+NanoClaw uses a tiered global memory model. Write to the most restrictive tier that covers the intended audience:
+
+| Path | Readable by | Purpose |
+|------|-------------|---------|
+| `/workspace/project/groups/global/CLAUDE.md` | All groups | Company name, products, team names, assistant persona |
+| `/workspace/project/groups/global-crm/CLAUDE.md` | discord_crm only | CRM context, deal templates, sales playbooks, pipeline baselines |
+| `/workspace/project/groups/global-pm/CLAUDE.md` | discord_pm only | PM norms, velocity baselines, sprint definitions, glossary |
+
+**Rule:** Never write CRM or sales data to `global/` — it is readable by all groups. Only update any tier when explicitly asked to "remember this globally" or similar.
 
 ---
 

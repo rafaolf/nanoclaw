@@ -5,7 +5,7 @@ import { CronExpressionParser } from 'cron-parser';
 
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
+import { createTask, deleteTask, getTaskById, logIpcAudit, updateTask } from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
@@ -82,11 +82,13 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   (targetGroup && targetGroup.folder === sourceGroup)
                 ) {
                   await deps.sendMessage(data.chatJid, data.text);
+                  logIpcAudit(sourceGroup, 'send_message', data.chatJid, true);
                   logger.info(
                     { chatJid: data.chatJid, sourceGroup },
                     'IPC message sent',
                   );
                 } else {
+                  logIpcAudit(sourceGroup, 'send_message', data.chatJid, false);
                   logger.warn(
                     { chatJid: data.chatJid, sourceGroup },
                     'Unauthorized IPC message attempt blocked',
@@ -203,6 +205,7 @@ export async function processTaskIpc(
 
         // Authorization: non-main groups can only schedule for themselves
         if (!isMain && targetFolder !== sourceGroup) {
+          logIpcAudit(sourceGroup, 'schedule_task', targetFolder, false);
           logger.warn(
             { sourceGroup, targetFolder },
             'Unauthorized schedule_task attempt blocked',
@@ -267,6 +270,8 @@ export async function processTaskIpc(
           status: 'active',
           created_at: new Date().toISOString(),
         });
+        logIpcAudit(sourceGroup, 'schedule_task', taskId, true,
+          JSON.stringify({ targetFolder, schedule_type: scheduleType, schedule_value: data.schedule_value }));
         logger.info(
           { taskId, sourceGroup, targetFolder, contextMode },
           'Task created via IPC',
@@ -280,12 +285,14 @@ export async function processTaskIpc(
         const task = getTaskById(data.taskId);
         if (task && (isMain || task.group_folder === sourceGroup)) {
           updateTask(data.taskId, { status: 'paused' });
+          logIpcAudit(sourceGroup, 'pause_task', data.taskId, true);
           logger.info(
             { taskId: data.taskId, sourceGroup },
             'Task paused via IPC',
           );
           deps.onTasksChanged();
         } else {
+          logIpcAudit(sourceGroup, 'pause_task', data.taskId, false);
           logger.warn(
             { taskId: data.taskId, sourceGroup },
             'Unauthorized task pause attempt',
@@ -299,12 +306,14 @@ export async function processTaskIpc(
         const task = getTaskById(data.taskId);
         if (task && (isMain || task.group_folder === sourceGroup)) {
           updateTask(data.taskId, { status: 'active' });
+          logIpcAudit(sourceGroup, 'resume_task', data.taskId, true);
           logger.info(
             { taskId: data.taskId, sourceGroup },
             'Task resumed via IPC',
           );
           deps.onTasksChanged();
         } else {
+          logIpcAudit(sourceGroup, 'resume_task', data.taskId, false);
           logger.warn(
             { taskId: data.taskId, sourceGroup },
             'Unauthorized task resume attempt',
@@ -318,12 +327,14 @@ export async function processTaskIpc(
         const task = getTaskById(data.taskId);
         if (task && (isMain || task.group_folder === sourceGroup)) {
           deleteTask(data.taskId);
+          logIpcAudit(sourceGroup, 'cancel_task', data.taskId, true);
           logger.info(
             { taskId: data.taskId, sourceGroup },
             'Task cancelled via IPC',
           );
           deps.onTasksChanged();
         } else {
+          logIpcAudit(sourceGroup, 'cancel_task', data.taskId, false);
           logger.warn(
             { taskId: data.taskId, sourceGroup },
             'Unauthorized task cancel attempt',
@@ -389,6 +400,8 @@ export async function processTaskIpc(
         }
 
         updateTask(data.taskId, updates);
+        logIpcAudit(sourceGroup, 'update_task', data.taskId, true,
+          JSON.stringify(updates));
         logger.info(
           { taskId: data.taskId, sourceGroup, updates },
           'Task updated via IPC',
@@ -400,6 +413,7 @@ export async function processTaskIpc(
     case 'refresh_groups':
       // Only main group can request a refresh
       if (isMain) {
+        logIpcAudit(sourceGroup, 'refresh_groups', null, true);
         logger.info(
           { sourceGroup },
           'Group metadata refresh requested via IPC',
@@ -414,6 +428,7 @@ export async function processTaskIpc(
           new Set(Object.keys(registeredGroups)),
         );
       } else {
+        logIpcAudit(sourceGroup, 'refresh_groups', null, false);
         logger.warn(
           { sourceGroup },
           'Unauthorized refresh_groups attempt blocked',
@@ -424,6 +439,7 @@ export async function processTaskIpc(
     case 'register_group':
       // Only main group can register new groups
       if (!isMain) {
+        logIpcAudit(sourceGroup, 'register_group', data.folder ?? null, false);
         logger.warn(
           { sourceGroup },
           'Unauthorized register_group attempt blocked',
@@ -432,6 +448,8 @@ export async function processTaskIpc(
       }
       if (data.jid && data.name && data.folder && data.trigger) {
         if (!isValidGroupFolder(data.folder)) {
+          logIpcAudit(sourceGroup, 'register_group', data.folder, false,
+            'invalid folder name');
           logger.warn(
             { sourceGroup, folder: data.folder },
             'Invalid register_group request - unsafe folder name',
@@ -439,6 +457,8 @@ export async function processTaskIpc(
           break;
         }
         // Defense in depth: agent cannot set isMain via IPC
+        logIpcAudit(sourceGroup, 'register_group', data.folder, true,
+          JSON.stringify({ jid: data.jid, name: data.name }));
         deps.registerGroup(data.jid, {
           name: data.name,
           folder: data.folder,

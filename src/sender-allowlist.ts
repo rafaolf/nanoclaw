@@ -14,8 +14,9 @@ export interface SenderAllowlistConfig {
   logDenied: boolean;
 }
 
-const DEFAULT_CONFIG: SenderAllowlistConfig = {
-  default: { allow: '*', mode: 'trigger' },
+// Used when no allowlist file is found — deny all non-own senders until the operator configures one.
+const FAILCLOSED_CONFIG: SenderAllowlistConfig = {
+  default: { allow: [], mode: 'trigger' },
   chats: {},
   logDenied: true,
 };
@@ -39,20 +40,26 @@ export function loadSenderAllowlist(
   try {
     raw = fs.readFileSync(filePath, 'utf-8');
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return DEFAULT_CONFIG;
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      logger.warn(
+        { path: filePath },
+        'sender-allowlist: config file not found — denying all non-own senders until configured',
+      );
+      return FAILCLOSED_CONFIG;
+    }
     logger.warn(
       { err, path: filePath },
-      'sender-allowlist: cannot read config',
+      'sender-allowlist: cannot read config — denying all non-own senders',
     );
-    return DEFAULT_CONFIG;
+    return FAILCLOSED_CONFIG;
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    logger.warn({ path: filePath }, 'sender-allowlist: invalid JSON');
-    return DEFAULT_CONFIG;
+    logger.warn({ path: filePath }, 'sender-allowlist: invalid JSON — denying all non-own senders');
+    return FAILCLOSED_CONFIG;
   }
 
   const obj = parsed as Record<string, unknown>;
@@ -60,9 +67,9 @@ export function loadSenderAllowlist(
   if (!isValidEntry(obj.default)) {
     logger.warn(
       { path: filePath },
-      'sender-allowlist: invalid or missing default entry',
+      'sender-allowlist: invalid or missing default entry — denying all non-own senders',
     );
-    return DEFAULT_CONFIG;
+    return FAILCLOSED_CONFIG;
   }
 
   const chats: Record<string, ChatAllowlistEntry> = {};

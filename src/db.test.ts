@@ -6,13 +6,24 @@ import {
   deleteTask,
   getAllChats,
   getAllRegisteredGroups,
+  getAllSessions,
+  getAllTasks,
+  getDueTasks,
   getMessagesSince,
   getNewMessages,
+  getRegisteredGroup,
+  getRouterState,
+  getSession,
   getTaskById,
+  getTasksForGroup,
+  logTaskRun,
   setRegisteredGroup,
+  setRouterState,
+  setSession,
   storeChatMetadata,
   storeMessage,
   updateTask,
+  updateTaskAfterRun,
 } from './db.js';
 
 beforeEach(() => {
@@ -480,5 +491,239 @@ describe('registered group isMain', () => {
     const group = groups['group@g.us'];
     expect(group).toBeDefined();
     expect(group.isMain).toBeUndefined();
+  });
+});
+
+// --- getRegisteredGroup (single-group lookup) ---
+
+describe('getRegisteredGroup', () => {
+  it('returns the group for a known JID', () => {
+    setRegisteredGroup('solo@s.whatsapp.net', {
+      name: 'Solo',
+      folder: 'whatsapp_solo',
+      trigger: '@Andy',
+      added_at: '2024-01-01T00:00:00.000Z',
+    });
+    const g = getRegisteredGroup('solo@s.whatsapp.net');
+    expect(g).toBeDefined();
+    expect(g!.name).toBe('Solo');
+  });
+
+  it('returns undefined for an unknown JID', () => {
+    expect(getRegisteredGroup('ghost@g.us')).toBeUndefined();
+  });
+});
+
+// --- Sessions ---
+
+describe('sessions', () => {
+  it('stores and retrieves a session ID', () => {
+    setSession('my_group', 'session-abc');
+    expect(getSession('my_group')).toBe('session-abc');
+  });
+
+  it('returns undefined for an unknown group', () => {
+    expect(getSession('unknown_group')).toBeUndefined();
+  });
+
+  it('overwrites on upsert', () => {
+    setSession('g', 'old');
+    setSession('g', 'new');
+    expect(getSession('g')).toBe('new');
+  });
+
+  it('getAllSessions returns all entries', () => {
+    setSession('group_a', 'sess-a');
+    setSession('group_b', 'sess-b');
+    const all = getAllSessions();
+    expect(all['group_a']).toBe('sess-a');
+    expect(all['group_b']).toBe('sess-b');
+  });
+});
+
+// --- Router state ---
+
+describe('router state', () => {
+  it('stores and retrieves a key', () => {
+    setRouterState('last_timestamp', '2024-01-01T00:00:00.000Z');
+    expect(getRouterState('last_timestamp')).toBe('2024-01-01T00:00:00.000Z');
+  });
+
+  it('returns undefined for an unknown key', () => {
+    expect(getRouterState('nonexistent')).toBeUndefined();
+  });
+
+  it('overwrites on upsert', () => {
+    setRouterState('k', 'v1');
+    setRouterState('k', 'v2');
+    expect(getRouterState('k')).toBe('v2');
+  });
+});
+
+// --- getDueTasks / updateTaskAfterRun / logTaskRun ---
+
+describe('getDueTasks', () => {
+  const base = {
+    group_folder: 'main',
+    chat_jid: 'group@g.us',
+    prompt: 'do work',
+    schedule_type: 'cron' as const,
+    schedule_value: '0 8 * * 1-5',
+    context_mode: 'isolated' as const,
+    status: 'active' as const,
+    created_at: '2024-01-01T00:00:00.000Z',
+  };
+
+  it('returns active tasks whose next_run is in the past', () => {
+    createTask({ ...base, id: 'past', next_run: '2020-01-01T00:00:00.000Z' });
+    createTask({ ...base, id: 'future', next_run: '2099-01-01T00:00:00.000Z' });
+    const due = getDueTasks();
+    expect(due.map((t) => t.id)).toContain('past');
+    expect(due.map((t) => t.id)).not.toContain('future');
+  });
+
+  it('excludes paused tasks even if next_run is past', () => {
+    createTask({
+      ...base,
+      id: 'paused',
+      next_run: '2020-01-01T00:00:00.000Z',
+      status: 'paused' as const,
+    });
+    expect(getDueTasks().map((t) => t.id)).not.toContain('paused');
+  });
+
+  it('excludes completed tasks', () => {
+    createTask({
+      ...base,
+      id: 'done',
+      next_run: '2020-01-01T00:00:00.000Z',
+      status: 'completed' as const,
+    });
+    expect(getDueTasks().map((t) => t.id)).not.toContain('done');
+  });
+
+  it('excludes tasks with null next_run', () => {
+    createTask({ ...base, id: 'null-run', next_run: null });
+    expect(getDueTasks().map((t) => t.id)).not.toContain('null-run');
+  });
+});
+
+describe('updateTaskAfterRun', () => {
+  const base = {
+    id: 'run-task',
+    group_folder: 'main',
+    chat_jid: 'group@g.us',
+    prompt: 'run me',
+    schedule_type: 'cron' as const,
+    schedule_value: '0 8 * * 1-5',
+    context_mode: 'isolated' as const,
+    next_run: '2024-01-02T08:00:00.000Z',
+    status: 'active' as const,
+    created_at: '2024-01-01T00:00:00.000Z',
+  };
+
+  it('updates next_run, last_run, last_result after a run', () => {
+    createTask(base);
+    updateTaskAfterRun('run-task', '2024-01-03T08:00:00.000Z', 'Done OK');
+    const t = getTaskById('run-task');
+    expect(t!.next_run).toBe('2024-01-03T08:00:00.000Z');
+    expect(t!.last_result).toBe('Done OK');
+    expect(t!.last_run).toBeTruthy();
+    expect(t!.status).toBe('active');
+  });
+
+  it('marks status as completed when next_run is null (once task)', () => {
+    createTask({ ...base, id: 'once-task', schedule_type: 'once' as const });
+    updateTaskAfterRun('once-task', null, 'Finished');
+    const t = getTaskById('once-task');
+    expect(t!.status).toBe('completed');
+    expect(t!.next_run).toBeNull();
+  });
+});
+
+describe('logTaskRun', () => {
+  it('records a run log entry', () => {
+    createTask({
+      id: 'logged-task',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'log me',
+      schedule_type: 'cron' as const,
+      schedule_value: '0 9 * * *',
+      context_mode: 'isolated' as const,
+      next_run: '2024-01-02T09:00:00.000Z',
+      status: 'active' as const,
+      created_at: '2024-01-01T00:00:00.000Z',
+    });
+    logTaskRun({
+      task_id: 'logged-task',
+      run_at: '2024-01-02T09:00:01.000Z',
+      duration_ms: 1500,
+      status: 'success',
+      result: 'All good',
+      error: null,
+    });
+    // Verify the log doesn't cause FK violations by checking the task still exists
+    expect(getTaskById('logged-task')).toBeDefined();
+  });
+});
+
+describe('getTasksForGroup / getAllTasks', () => {
+  it('getTasksForGroup filters by group_folder', () => {
+    createTask({
+      id: 't-main',
+      group_folder: 'main',
+      chat_jid: 'jid@g.us',
+      prompt: 'main task',
+      schedule_type: 'cron' as const,
+      schedule_value: '0 8 * * *',
+      context_mode: 'isolated' as const,
+      next_run: null,
+      status: 'active' as const,
+      created_at: '2024-01-01T00:00:00.000Z',
+    });
+    createTask({
+      id: 't-other',
+      group_folder: 'other_group',
+      chat_jid: 'jid@g.us',
+      prompt: 'other task',
+      schedule_type: 'cron' as const,
+      schedule_value: '0 8 * * *',
+      context_mode: 'isolated' as const,
+      next_run: null,
+      status: 'active' as const,
+      created_at: '2024-01-01T00:00:00.000Z',
+    });
+    expect(getTasksForGroup('main')).toHaveLength(1);
+    expect(getTasksForGroup('other_group')).toHaveLength(1);
+    expect(getTasksForGroup('main')[0].id).toBe('t-main');
+  });
+
+  it('getAllTasks returns tasks from all groups', () => {
+    createTask({
+      id: 'all-1',
+      group_folder: 'main',
+      chat_jid: 'jid@g.us',
+      prompt: 'p',
+      schedule_type: 'cron' as const,
+      schedule_value: '0 8 * * *',
+      context_mode: 'isolated' as const,
+      next_run: null,
+      status: 'active' as const,
+      created_at: '2024-01-01T00:00:00.000Z',
+    });
+    createTask({
+      id: 'all-2',
+      group_folder: 'other_group',
+      chat_jid: 'jid@g.us',
+      prompt: 'p',
+      schedule_type: 'cron' as const,
+      schedule_value: '0 8 * * *',
+      context_mode: 'isolated' as const,
+      next_run: null,
+      status: 'active' as const,
+      created_at: '2024-01-01T00:00:00.000Z',
+    });
+    expect(getAllTasks()).toHaveLength(2);
   });
 });

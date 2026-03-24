@@ -65,6 +65,18 @@ function createSchema(database: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_task_run_logs ON task_run_logs(task_id, run_at);
 
+    CREATE TABLE IF NOT EXISTS ipc_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      source_group TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      target TEXT,
+      allowed INTEGER NOT NULL,
+      detail TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ipc_audit_ts ON ipc_audit(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_ipc_audit_group ON ipc_audit(source_group, timestamp);
+
     CREATE TABLE IF NOT EXISTS router_state (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -138,6 +150,25 @@ function createSchema(database: Database.Database): void {
     );
   } catch {
     /* columns already exist */
+  }
+
+  // Add ipc_audit table if it doesn't exist (migration for existing DBs)
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS ipc_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        source_group TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        target TEXT,
+        allowed INTEGER NOT NULL,
+        detail TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_ipc_audit_ts ON ipc_audit(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_ipc_audit_group ON ipc_audit(source_group, timestamp);
+    `);
+  } catch {
+    /* table already exists */
   }
 }
 
@@ -694,4 +725,53 @@ function migrateJsonState(): void {
       }
     }
   }
+}
+
+// ─── IPC Audit Log ───────────────────────────────────────────────────────────
+
+export interface IpcAuditEntry {
+  id: number;
+  timestamp: string;
+  source_group: string;
+  operation: string;
+  target: string | null;
+  allowed: number; // 1 = allowed, 0 = blocked
+  detail: string | null;
+}
+
+export function logIpcAudit(
+  sourceGroup: string,
+  operation: string,
+  target: string | null,
+  allowed: boolean,
+  detail?: string,
+): void {
+  db.prepare(
+    `INSERT INTO ipc_audit (timestamp, source_group, operation, target, allowed, detail)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
+    new Date().toISOString(),
+    sourceGroup,
+    operation,
+    target ?? null,
+    allowed ? 1 : 0,
+    detail ?? null,
+  );
+}
+
+export function getIpcAuditLog(
+  limit = 100,
+  sourceGroup?: string,
+): IpcAuditEntry[] {
+  if (sourceGroup) {
+    return db
+      .prepare(
+        `SELECT * FROM ipc_audit WHERE source_group = ?
+         ORDER BY timestamp DESC LIMIT ?`,
+      )
+      .all(sourceGroup, limit) as IpcAuditEntry[];
+  }
+  return db
+    .prepare(`SELECT * FROM ipc_audit ORDER BY timestamp DESC LIMIT ?`)
+    .all(limit) as IpcAuditEntry[];
 }

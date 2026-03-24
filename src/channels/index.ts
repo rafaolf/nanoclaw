@@ -4,8 +4,8 @@
 // discord
 import './discord.js';
 
-// gmail
-import './gmail.js';
+// gmail (disabled as channel — MCP tools still available in containers)
+// import './gmail.js';
 
 // slack
 

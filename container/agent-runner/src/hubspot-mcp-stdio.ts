@@ -7,7 +7,13 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-const HUBSPOT_TOKEN = process.env.HUBSPOT_ACCESS_TOKEN ?? '';
+import { errorResult } from './mcp-utils.js';
+
+const HUBSPOT_TOKEN = process.env.HUBSPOT_ACCESS_TOKEN;
+if (!HUBSPOT_TOKEN) {
+  console.error('HUBSPOT_ACCESS_TOKEN not set — HubSpot MCP server cannot start.');
+  process.exit(1);
+}
 
 async function hubspotRequest(path: string, method = 'GET', body?: object): Promise<unknown> {
   const url = `https://api.hubapi.com${path}`;
@@ -38,28 +44,32 @@ server.tool(
     limit: z.number().optional().describe('Max results (default 10)'),
   },
   async ({ query, limit = 10 }) => {
-    const data = await hubspotRequest('/crm/v3/objects/contacts/search', 'POST', {
-      filterGroups: [
-        {
-          filters: [
-            { propertyName: 'email', operator: 'CONTAINS_TOKEN', value: `*${query}*` },
-          ],
-        },
-        {
-          filters: [
-            { propertyName: 'firstname', operator: 'CONTAINS_TOKEN', value: `*${query}*` },
-          ],
-        },
-        {
-          filters: [
-            { propertyName: 'lastname', operator: 'CONTAINS_TOKEN', value: `*${query}*` },
-          ],
-        },
-      ],
-      properties: ['firstname', 'lastname', 'email', 'phone', 'company', 'lifecyclestage', 'hs_lead_status'],
-      limit: Math.min(limit, 50),
-    });
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const data = await hubspotRequest('/crm/v3/objects/contacts/search', 'POST', {
+        filterGroups: [
+          {
+            filters: [
+              { propertyName: 'email', operator: 'CONTAINS_TOKEN', value: `*${query}*` },
+            ],
+          },
+          {
+            filters: [
+              { propertyName: 'firstname', operator: 'CONTAINS_TOKEN', value: `*${query}*` },
+            ],
+          },
+          {
+            filters: [
+              { propertyName: 'lastname', operator: 'CONTAINS_TOKEN', value: `*${query}*` },
+            ],
+          },
+        ],
+        properties: ['firstname', 'lastname', 'email', 'phone', 'company', 'lifecyclestage', 'hs_lead_status'],
+        limit: Math.min(limit, 50),
+      });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -72,25 +82,29 @@ server.tool(
     limit: z.number().optional().describe('Max results (default 20)'),
   },
   async ({ query, stage, limit = 20 }) => {
-    const filters: object[] = [];
-    if (query) {
-      filters.push({ propertyName: 'dealname', operator: 'CONTAINS_TOKEN', value: `*${query}*` });
-    }
-    if (stage) {
-      filters.push({ propertyName: 'dealstage', operator: 'EQ', value: stage });
-    }
+    try {
+      const filters: object[] = [];
+      if (query) {
+        filters.push({ propertyName: 'dealname', operator: 'CONTAINS_TOKEN', value: `*${query}*` });
+      }
+      if (stage) {
+        filters.push({ propertyName: 'dealstage', operator: 'EQ', value: stage });
+      }
 
-    const body: Record<string, unknown> = {
-      properties: ['dealname', 'dealstage', 'amount', 'closedate', 'pipeline', 'hubspot_owner_id', 'hs_lastmodifieddate'],
-      limit: Math.min(limit, 50),
-      sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
-    };
-    if (filters.length > 0) {
-      body.filterGroups = [{ filters }];
-    }
+      const body: Record<string, unknown> = {
+        properties: ['dealname', 'dealstage', 'amount', 'closedate', 'pipeline', 'hubspot_owner_id', 'hs_lastmodifieddate'],
+        limit: Math.min(limit, 50),
+        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+      };
+      if (filters.length > 0) {
+        body.filterGroups = [{ filters }];
+      }
 
-    const data = await hubspotRequest('/crm/v3/objects/deals/search', 'POST', body);
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+      const data = await hubspotRequest('/crm/v3/objects/deals/search', 'POST', body);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -101,10 +115,14 @@ server.tool(
     deal_id: z.string().describe('HubSpot deal ID'),
   },
   async ({ deal_id }) => {
-    const data = await hubspotRequest(
-      `/crm/v3/objects/deals/${deal_id}?properties=dealname,dealstage,amount,closedate,pipeline,hubspot_owner_id,description,notes_last_updated`
-    );
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const data = await hubspotRequest(
+        `/crm/v3/objects/deals/${encodeURIComponent(deal_id)}?properties=dealname,dealstage,amount,closedate,pipeline,hubspot_owner_id,description,notes_last_updated`
+      );
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -116,23 +134,27 @@ server.tool(
     limit: z.number().optional().describe('Max results (default 10)'),
   },
   async ({ query, limit = 10 }) => {
-    const data = await hubspotRequest('/crm/v3/objects/companies/search', 'POST', {
-      filterGroups: [
-        {
-          filters: [
-            { propertyName: 'name', operator: 'CONTAINS_TOKEN', value: `*${query}*` },
-          ],
-        },
-        {
-          filters: [
-            { propertyName: 'domain', operator: 'CONTAINS_TOKEN', value: `*${query}*` },
-          ],
-        },
-      ],
-      properties: ['name', 'domain', 'industry', 'phone', 'city', 'state', 'country', 'numberofemployees', 'annualrevenue'],
-      limit: Math.min(limit, 50),
-    });
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const data = await hubspotRequest('/crm/v3/objects/companies/search', 'POST', {
+        filterGroups: [
+          {
+            filters: [
+              { propertyName: 'name', operator: 'CONTAINS_TOKEN', value: `*${query}*` },
+            ],
+          },
+          {
+            filters: [
+              { propertyName: 'domain', operator: 'CONTAINS_TOKEN', value: `*${query}*` },
+            ],
+          },
+        ],
+        properties: ['name', 'domain', 'industry', 'phone', 'city', 'state', 'country', 'numberofemployees', 'annualrevenue'],
+        limit: Math.min(limit, 50),
+      });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -141,8 +163,12 @@ server.tool(
   'List all deal pipelines and their stages. Useful for mapping stage IDs to human-readable names.',
   {},
   async () => {
-    const data = await hubspotRequest('/crm/v3/pipelines/deals');
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const data = await hubspotRequest('/crm/v3/pipelines/deals');
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -157,13 +183,17 @@ server.tool(
     company: z.string().optional().describe('Company name'),
   },
   async ({ email, firstname, lastname, phone, company }) => {
-    const properties: Record<string, string> = { email };
-    if (firstname) properties.firstname = firstname;
-    if (lastname) properties.lastname = lastname;
-    if (phone) properties.phone = phone;
-    if (company) properties.company = company;
-    const data = await hubspotRequest('/crm/v3/objects/contacts', 'POST', { properties });
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const properties: Record<string, string> = { email };
+      if (firstname) properties.firstname = firstname;
+      if (lastname) properties.lastname = lastname;
+      if (phone) properties.phone = phone;
+      if (company) properties.company = company;
+      const data = await hubspotRequest('/crm/v3/objects/contacts', 'POST', { properties });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -178,13 +208,17 @@ server.tool(
     closedate: z.string().optional().describe('Expected close date (YYYY-MM-DD)'),
   },
   async ({ dealname, pipeline, dealstage, amount, closedate }) => {
-    const properties: Record<string, string> = { dealname };
-    if (pipeline) properties.pipeline = pipeline;
-    if (dealstage) properties.dealstage = dealstage;
-    if (amount) properties.amount = amount;
-    if (closedate) properties.closedate = closedate;
-    const data = await hubspotRequest('/crm/v3/objects/deals', 'POST', { properties });
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const properties: Record<string, string> = { dealname };
+      if (pipeline) properties.pipeline = pipeline;
+      if (dealstage) properties.dealstage = dealstage;
+      if (amount) properties.amount = amount;
+      if (closedate) properties.closedate = closedate;
+      const data = await hubspotRequest('/crm/v3/objects/deals', 'POST', { properties });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -199,13 +233,17 @@ server.tool(
     closedate: z.string().optional().describe('New close date (YYYY-MM-DD)'),
   },
   async ({ deal_id, dealname, dealstage, amount, closedate }) => {
-    const properties: Record<string, string> = {};
-    if (dealname) properties.dealname = dealname;
-    if (dealstage) properties.dealstage = dealstage;
-    if (amount) properties.amount = amount;
-    if (closedate) properties.closedate = closedate;
-    await hubspotRequest(`/crm/v3/objects/deals/${deal_id}`, 'PATCH', { properties });
-    return { content: [{ type: 'text' as const, text: `Deal ${deal_id} updated.` }] };
+    try {
+      const properties: Record<string, string> = {};
+      if (dealname) properties.dealname = dealname;
+      if (dealstage) properties.dealstage = dealstage;
+      if (amount) properties.amount = amount;
+      if (closedate) properties.closedate = closedate;
+      await hubspotRequest(`/crm/v3/objects/deals/${encodeURIComponent(deal_id)}`, 'PATCH', { properties });
+      return { content: [{ type: 'text' as const, text: `Deal ${deal_id} updated.` }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 
@@ -214,8 +252,12 @@ server.tool(
   'List HubSpot owners (sales reps). Useful for mapping owner IDs to names.',
   {},
   async () => {
-    const data = await hubspotRequest('/crm/v3/owners');
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    try {
+      const data = await hubspotRequest('/crm/v3/owners');
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
   }
 );
 

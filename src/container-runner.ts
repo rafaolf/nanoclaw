@@ -44,7 +44,6 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   imageAttachments?: Array<{ relativePath: string; mediaType: string }>;
-
 }
 
 export interface ContainerOutput {
@@ -91,6 +90,17 @@ function buildVolumeMounts(
       });
     }
 
+    // Shadow data/sessions/ to prevent main from reading other groups' conversation
+    // transcripts. Main's own .claude/ is already mounted at /home/node/.claude/
+    // separately, so it has no legitimate need for this path.
+    const emptyDir = path.join(DATA_DIR, 'empty');
+    fs.mkdirSync(emptyDir, { recursive: true });
+    mounts.push({
+      hostPath: emptyDir,
+      containerPath: '/workspace/project/data/sessions',
+      readonly: true,
+    });
+
     // Main also gets its group folder as the working directory
     mounts.push({
       hostPath: groupDir,
@@ -114,6 +124,36 @@ function buildVolumeMounts(
         containerPath: '/workspace/global',
         readonly: true,
       });
+    }
+
+    // Capability-tiered global directories — least-privilege shared memory.
+    // Each tier (global-crm/, global-pm/, etc.) is mounted read-only only for
+    // groups that hold the matching capability in capabilities.json.
+    // Uses the same source of truth as the channel-routing skill.
+    const capabilitiesPath = path.join(
+      process.cwd(),
+      'container', 'skills', 'channel-routing', 'capabilities.json',
+    );
+    if (fs.existsSync(capabilitiesPath)) {
+      try {
+        const caps = JSON.parse(fs.readFileSync(capabilitiesPath, 'utf-8')) as {
+          capabilities: Record<string, { allowedGroups: string[] }>;
+        };
+        for (const [capName, cap] of Object.entries(caps.capabilities)) {
+          if (cap.allowedGroups.includes(group.folder)) {
+            const tierDir = path.join(GROUPS_DIR, `global-${capName}`);
+            if (fs.existsSync(tierDir)) {
+              mounts.push({
+                hostPath: tierDir,
+                containerPath: `/workspace/global-${capName}`,
+                readonly: true,
+              });
+            }
+          }
+        }
+      } catch {
+        // capabilities.json missing or malformed — skip tier mounts silently
+      }
     }
   }
 
@@ -256,7 +296,7 @@ function buildContainerArgs(
 
   // Pass third-party integration credentials from .env to the container
   // Global credentials: available to all groups
-  const globalEnvKeys = ['JIRA_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN'];
+  const globalEnvKeys = ['JIRA_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'PARALLEL_API_KEY'];
   const globalEnv = readEnvFile(globalEnvKeys);
   for (const key of globalEnvKeys) {
     if (globalEnv[key]) {
@@ -264,19 +304,26 @@ function buildContainerArgs(
     }
   }
 
-  // Group-scoped credentials: only injected into authorized groups (least privilege).
-  // Map each env key to the group folders allowed to receive it.
-  const scopedCredentials: Record<string, string[]> = {
-    HUBSPOT_ACCESS_TOKEN: ['discord_crm'],
-  };
-  const scopedKeys = Object.keys(scopedCredentials);
-  if (scopedKeys.length > 0) {
-    const scopedEnv = readEnvFile(scopedKeys);
-    for (const key of scopedKeys) {
-      if (!scopedEnv[key]) continue;
-      if (scopedCredentials[key].includes(groupFolder)) {
-        args.push('-e', `${key}=${scopedEnv[key]}`);
+  // Group-scoped credentials: injected only for groups that declare them in
+  // data/groups/{folder}/env.json (array of env key names from .env).
+  // Add/revoke credentials per group by editing that file — no code deploy needed.
+  const groupEnvConfigPath = path.join(DATA_DIR, 'groups', groupFolder, 'env.json');
+  if (fs.existsSync(groupEnvConfigPath)) {
+    try {
+      const allowedKeys = JSON.parse(
+        fs.readFileSync(groupEnvConfigPath, 'utf-8'),
+      ) as string[];
+      if (Array.isArray(allowedKeys) && allowedKeys.length > 0) {
+        const groupEnv = readEnvFile(allowedKeys);
+        for (const key of allowedKeys) {
+          if (groupEnv[key]) {
+            args.push('-e', `${key}=${groupEnv[key]}`);
+          }
+        }
       }
+    } catch {
+      // env.json malformed — skip scoped credentials for this group
+      logger.warn({ groupFolder, path: groupEnvConfigPath }, 'Failed to read group env.json');
     }
   }
 

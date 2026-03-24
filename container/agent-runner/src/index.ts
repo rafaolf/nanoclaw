@@ -28,7 +28,6 @@ interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   imageAttachments?: Array<{ relativePath: string; mediaType: string }>;
-
 }
 
 interface ImageContentBlock {
@@ -351,6 +350,69 @@ function waitForIpcMessage(): Promise<string | null> {
  * allowing agent teams subagents to run to completion.
  * Also pipes IPC messages into the stream during the query.
  */
+function buildMcpServers(mcpServerPath: string, containerInput: ContainerInput) {
+  const dir = path.dirname(mcpServerPath);
+  return {
+    nanoclaw: {
+      command: 'node',
+      args: [mcpServerPath],
+      env: {
+        NANOCLAW_CHAT_JID: containerInput.chatJid,
+        NANOCLAW_GROUP_FOLDER: containerInput.groupFolder,
+        NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
+      },
+    },
+    // Only start integration MCP servers when credentials are configured.
+    // This avoids wasting resources and prevents agents from seeing tools
+    // that would fail at call time due to missing credentials.
+    ...(process.env.JIRA_URL ? {
+      jira: {
+        command: 'node',
+        args: [path.join(dir, 'jira-mcp-stdio.js')],
+        env: {
+          JIRA_URL: process.env.JIRA_URL,
+          JIRA_EMAIL: process.env.JIRA_EMAIL!,
+          JIRA_API_TOKEN: process.env.JIRA_API_TOKEN!,
+        },
+      },
+    } : {}),
+    ...(process.env.HUBSPOT_ACCESS_TOKEN ? {
+      hubspot: {
+        command: 'node',
+        args: [path.join(dir, 'hubspot-mcp-stdio.js')],
+        env: {
+          HUBSPOT_ACCESS_TOKEN: process.env.HUBSPOT_ACCESS_TOKEN,
+        },
+      },
+    } : {}),
+    ...(fs.existsSync('/workspace/google-service-account.json') ? {
+      gdrive: {
+        command: 'node',
+        args: [path.join(dir, 'gdrive-mcp-stdio.js')],
+        env: {
+          GOOGLE_SERVICE_ACCOUNT_PATH: '/workspace/google-service-account.json',
+        },
+      },
+    } : {}),
+    gmail: {
+      command: 'npx',
+      args: ['-y', '@gongrzhe/server-gmail-autoauth-mcp'],
+    },
+    ...(process.env.PARALLEL_API_KEY ? {
+      'parallel-search': {
+        type: 'http' as const,
+        url: 'https://search-mcp.parallel.ai/mcp',
+        headers: { Authorization: `Bearer ${process.env.PARALLEL_API_KEY}` },
+      },
+      'parallel-task': {
+        type: 'http' as const,
+        url: 'https://task-mcp.parallel.ai/mcp',
+        headers: { Authorization: `Bearer ${process.env.PARALLEL_API_KEY}` },
+      },
+    } : {}),
+  };
+}
+
 async function runQuery(
   prompt: string,
   sessionId: string | undefined,
@@ -412,13 +474,15 @@ async function runQuery(
     globalClaudeMd = fs.readFileSync(globalClaudeMdPath, 'utf-8');
   }
 
-  // Discover additional directories mounted at /workspace/extra/*
-  // These are passed to the SDK so their CLAUDE.md files are loaded automatically
+  // Discover additional directories whose CLAUDE.md should be loaded:
+  // - /workspace/extra/* (custom mounts via containerConfig.additionalMounts)
+  // - /workspace/global-* (capability-tiered global memory, mounted by host)
   const extraDirs: string[] = [];
-  const extraBase = '/workspace/extra';
-  if (fs.existsSync(extraBase)) {
-    for (const entry of fs.readdirSync(extraBase)) {
-      const fullPath = path.join(extraBase, entry);
+  for (const base of ['/workspace/extra', '/workspace']) {
+    if (!fs.existsSync(base)) continue;
+    for (const entry of fs.readdirSync(base)) {
+      if (base === '/workspace' && !entry.startsWith('global-')) continue;
+      const fullPath = path.join(base, entry);
       if (fs.statSync(fullPath).isDirectory()) {
         extraDirs.push(fullPath);
       }
@@ -432,6 +496,10 @@ async function runQuery(
     prompt: stream,
     options: {
       cwd: '/workspace/group',
+      model: 'sonnet',
+      maxTurns: 50,
+      maxBudgetUsd: 2.0,
+      ...(containerInput.isScheduledTask ? { effort: 'medium' as const } : {}),
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
       resumeSessionAt: resumeAt,
@@ -447,60 +515,17 @@ async function runQuery(
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
-...(process.env.JIRA_URL ? ['mcp__jira__*'] : []),
+        ...(process.env.JIRA_URL ? ['mcp__jira__*'] : []),
         ...(process.env.HUBSPOT_ACCESS_TOKEN ? ['mcp__hubspot__*'] : []),
         ...(fs.existsSync('/workspace/google-service-account.json') ? ['mcp__gdrive__*'] : []),
         'mcp__gmail__*',
+        ...(process.env.PARALLEL_API_KEY ? ['mcp__parallel-search__*', 'mcp__parallel-task__*'] : []),
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       settingSources: ['project', 'user'],
-      mcpServers: {
-        nanoclaw: {
-          command: 'node',
-          args: [mcpServerPath],
-          env: {
-            NANOCLAW_CHAT_JID: containerInput.chatJid,
-            NANOCLAW_GROUP_FOLDER: containerInput.groupFolder,
-            NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
-          },
-        },
-// Only start integration MCP servers when credentials are configured.
-        ...(process.env.JIRA_URL ? {
-          jira: {
-            command: 'node',
-            args: [path.join(path.dirname(mcpServerPath), 'jira-mcp-stdio.js')],
-            env: {
-              JIRA_URL: process.env.JIRA_URL,
-              JIRA_EMAIL: process.env.JIRA_EMAIL ?? '',
-              JIRA_API_TOKEN: process.env.JIRA_API_TOKEN ?? '',
-            },
-          },
-        } : {}),
-        ...(process.env.HUBSPOT_ACCESS_TOKEN ? {
-          hubspot: {
-            command: 'node',
-            args: [path.join(path.dirname(mcpServerPath), 'hubspot-mcp-stdio.js')],
-            env: {
-              HUBSPOT_ACCESS_TOKEN: process.env.HUBSPOT_ACCESS_TOKEN,
-            },
-          },
-        } : {}),
-        ...(fs.existsSync('/workspace/google-service-account.json') ? {
-          gdrive: {
-            command: 'node',
-            args: [path.join(path.dirname(mcpServerPath), 'gdrive-mcp-stdio.js')],
-            env: {
-              GOOGLE_SERVICE_ACCOUNT_PATH: '/workspace/google-service-account.json',
-            },
-          },
-        } : {}),
-        gmail: {
-          command: 'npx',
-          args: ['-y', '@gongrzhe/server-gmail-autoauth-mcp'],
-        },
-      },
+      mcpServers: buildMcpServers(mcpServerPath, containerInput),
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook(containerInput.assistantName)] }],
       },
@@ -560,7 +585,10 @@ async function main(): Promise<void> {
 
   // Credentials are injected by the host's credential proxy via ANTHROPIC_BASE_URL.
   // No real secrets exist in the container environment.
-  const sdkEnv: Record<string, string | undefined> = { ...process.env };
+  const sdkEnv: Record<string, string | undefined> = {
+    ...process.env,
+    MCP_TOOL_TIMEOUT: process.env.MCP_TOOL_TIMEOUT || '60000', // 60s for slow external APIs
+  };
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');

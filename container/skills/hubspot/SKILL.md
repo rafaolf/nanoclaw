@@ -1,154 +1,32 @@
 ---
 name: hubspot
-description: Query and update HubSpot CRM — contacts, companies, deals. Use when the user asks about CRM data, leads, pipeline, deals, or customers.
+description: Query and update HubSpot CRM — contacts, companies, deals, pipeline. Use when the user asks about CRM data, leads, pipeline, deals, or customers. Only available when HUBSPOT_ACCESS_TOKEN is configured.
 ---
 
 # HubSpot CRM Integration
 
-**Access control:** Before using any HubSpot API, verify you have the credential:
+You have access to HubSpot CRM via MCP tools (prefixed `mcp__hubspot__`). Use these tools — do NOT use curl to call the HubSpot API directly.
 
-```bash
-test -n "$HUBSPOT_ACCESS_TOKEN" && echo "OK" || echo "NO_ACCESS"
-```
+## Available MCP tools
 
-If `NO_ACCESS`, do NOT attempt any CRM operations. Instead, check the channel-routing skill for where to redirect the user.
+| Tool | Purpose |
+|------|---------|
+| `hubspot_search_contacts` | Search contacts by name, email, or other properties |
+| `hubspot_search_deals` | Search deals by name or stage. Use for pipeline queries |
+| `hubspot_search_companies` | Search companies by name or domain |
+| `hubspot_get_deal` | Get full details of a specific deal by ID |
+| `hubspot_get_pipeline_stages` | List all pipelines and stages (map stage IDs to names) |
+| `hubspot_get_owners` | List sales reps (map owner IDs to names) |
+| `hubspot_create_contact` | Create a new contact (email required) |
+| `hubspot_create_deal` | Create a new deal (dealname required) |
+| `hubspot_update_deal` | Update deal properties (stage, amount, close date, etc.) |
 
-You have access to the HubSpot API via the `HUBSPOT_ACCESS_TOKEN` environment variable. Use `curl` to make API calls.
+## Workflow tips
 
-**Base URL:** `https://api.hubapi.com`
-**Auth header:** `Authorization: Bearer $HUBSPOT_ACCESS_TOKEN`
-
-## Common operations
-
-### Search contacts
-
-```bash
-curl -s -X POST "https://api.hubapi.com/crm/v3/objects/contacts/search" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "filterGroups": [{"filters": [{"propertyName": "email", "operator": "CONTAINS_TOKEN", "value": "example.com"}]}],
-    "properties": ["firstname", "lastname", "email", "company", "phone"],
-    "limit": 10
-  }'
-```
-
-### Search deals
-
-```bash
-curl -s -X POST "https://api.hubapi.com/crm/v3/objects/deals/search" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "filterGroups": [{"filters": [{"propertyName": "dealstage", "operator": "EQ", "value": "appointmentscheduled"}]}],
-    "properties": ["dealname", "dealstage", "amount", "pipeline", "closedate", "hubspot_owner_id"],
-    "limit": 10
-  }'
-```
-
-### List contacts (recent)
-
-```bash
-curl -s "https://api.hubapi.com/crm/v3/objects/contacts?limit=10&properties=firstname,lastname,email,company,phone&sorts=-createdate" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN"
-```
-
-### List deals (recent)
-
-```bash
-curl -s "https://api.hubapi.com/crm/v3/objects/deals?limit=10&properties=dealname,dealstage,amount,pipeline,closedate&sorts=-createdate" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN"
-```
-
-### List companies (recent)
-
-```bash
-curl -s "https://api.hubapi.com/crm/v3/objects/companies?limit=10&properties=name,domain,industry,city,phone&sorts=-createdate" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN"
-```
-
-### Get a specific record
-
-```bash
-# Contact by ID
-curl -s "https://api.hubapi.com/crm/v3/objects/contacts/{contactId}?properties=firstname,lastname,email,company,phone,lifecyclestage" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN"
-
-# Deal by ID
-curl -s "https://api.hubapi.com/crm/v3/objects/deals/{dealId}?properties=dealname,dealstage,amount,pipeline,closedate" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN"
-```
-
-### Get associations (e.g. contacts on a deal)
-
-```bash
-curl -s "https://api.hubapi.com/crm/v4/objects/deals/{dealId}/associations/contacts" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN"
-```
-
-### Create a note
-
-```bash
-curl -s -X POST "https://api.hubapi.com/crm/v3/objects/notes" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "properties": {
-      "hs_note_body": "Note content here",
-      "hs_timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-    }
-  }'
-```
-
-### Associate a note with a contact
-
-```bash
-curl -s -X PUT "https://api.hubapi.com/crm/v4/objects/notes/{noteId}/associations/contacts/{contactId}" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '[{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": 202}]'
-```
-
-### Update a record
-
-```bash
-curl -s -X PATCH "https://api.hubapi.com/crm/v3/objects/contacts/{contactId}" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"properties": {"phone": "+1234567890"}}'
-```
-
-### Get deal pipeline stages
-
-```bash
-curl -s "https://api.hubapi.com/crm/v3/pipelines/deals" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN"
-```
-
-### Get owners (sales reps)
-
-```bash
-curl -s "https://api.hubapi.com/crm/v3/owners" \
-  -H "Authorization: Bearer $HUBSPOT_ACCESS_TOKEN"
-```
-
-## Search operators
-
-Use these in `filterGroups[].filters[].operator`:
-- `EQ` — equals
-- `NEQ` — not equal
-- `LT` / `LTE` / `GT` / `GTE` — comparisons (dates use millisecond timestamps)
-- `CONTAINS_TOKEN` — contains word/token
-- `NOT_CONTAINS_TOKEN` — does not contain
-- `HAS_PROPERTY` / `NOT_HAS_PROPERTY` — property exists or not
+- **Pipeline overview**: Call `hubspot_get_pipeline_stages` first to map stage IDs to names, then `hubspot_search_deals` to list deals.
+- **Owner lookup**: Call `hubspot_get_owners` to map `hubspot_owner_id` values to actual names.
+- **Vague questions** like "how's the pipeline": Show a deal stage summary grouped by stage with total amounts.
 
 ## Response format
 
-Always present CRM data in a clean, readable format. Summarize key fields — don't dump raw JSON at the user. When listing multiple records, use a concise table or bullet format.
-
-## Important
-
-- Always check `$HUBSPOT_ACCESS_TOKEN` is set before making calls
-- Parse JSON responses with `jq` for readability
-- Respect rate limits: max 100 requests per 10 seconds
-- When the user asks vague questions like "how's the pipeline", show a deal stage summary
+Present CRM data in a clean, readable format. Summarize key fields — don't dump raw JSON at the user. When listing multiple records, use a concise table or bullet format.
