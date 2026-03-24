@@ -5,7 +5,13 @@ import { CronExpressionParser } from 'cron-parser';
 
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, logIpcAudit, updateTask } from './db.js';
+import {
+  createTask,
+  deleteTask,
+  getTaskById,
+  logIpcAudit,
+  updateTask,
+} from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
@@ -270,8 +276,17 @@ export async function processTaskIpc(
           status: 'active',
           created_at: new Date().toISOString(),
         });
-        logIpcAudit(sourceGroup, 'schedule_task', taskId, true,
-          JSON.stringify({ targetFolder, schedule_type: scheduleType, schedule_value: data.schedule_value }));
+        logIpcAudit(
+          sourceGroup,
+          'schedule_task',
+          taskId,
+          true,
+          JSON.stringify({
+            targetFolder,
+            schedule_type: scheduleType,
+            schedule_value: data.schedule_value,
+          }),
+        );
         logger.info(
           { taskId, sourceGroup, targetFolder, contextMode },
           'Task created via IPC',
@@ -400,8 +415,13 @@ export async function processTaskIpc(
         }
 
         updateTask(data.taskId, updates);
-        logIpcAudit(sourceGroup, 'update_task', data.taskId, true,
-          JSON.stringify(updates));
+        logIpcAudit(
+          sourceGroup,
+          'update_task',
+          data.taskId,
+          true,
+          JSON.stringify(updates),
+        );
         logger.info(
           { taskId: data.taskId, sourceGroup, updates },
           'Task updated via IPC',
@@ -448,8 +468,13 @@ export async function processTaskIpc(
       }
       if (data.jid && data.name && data.folder && data.trigger) {
         if (!isValidGroupFolder(data.folder)) {
-          logIpcAudit(sourceGroup, 'register_group', data.folder, false,
-            'invalid folder name');
+          logIpcAudit(
+            sourceGroup,
+            'register_group',
+            data.folder,
+            false,
+            'invalid folder name',
+          );
           logger.warn(
             { sourceGroup, folder: data.folder },
             'Invalid register_group request - unsafe folder name',
@@ -457,8 +482,13 @@ export async function processTaskIpc(
           break;
         }
         // Defense in depth: agent cannot set isMain via IPC
-        logIpcAudit(sourceGroup, 'register_group', data.folder, true,
-          JSON.stringify({ jid: data.jid, name: data.name }));
+        logIpcAudit(
+          sourceGroup,
+          'register_group',
+          data.folder,
+          true,
+          JSON.stringify({ jid: data.jid, name: data.name }),
+        );
         deps.registerGroup(data.jid, {
           name: data.name,
           folder: data.folder,

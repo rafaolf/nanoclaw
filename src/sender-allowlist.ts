@@ -58,7 +58,10 @@ export function loadSenderAllowlist(
   try {
     parsed = JSON.parse(raw);
   } catch {
-    logger.warn({ path: filePath }, 'sender-allowlist: invalid JSON — denying all non-own senders');
+    logger.warn(
+      { path: filePath },
+      'sender-allowlist: invalid JSON — denying all non-own senders',
+    );
     return FAILCLOSED_CONFIG;
   }
 

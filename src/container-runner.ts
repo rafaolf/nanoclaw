@@ -132,7 +132,10 @@ function buildVolumeMounts(
     // Uses the same source of truth as the channel-routing skill.
     const capabilitiesPath = path.join(
       process.cwd(),
-      'container', 'skills', 'channel-routing', 'capabilities.json',
+      'container',
+      'skills',
+      'channel-routing',
+      'capabilities.json',
     );
     if (fs.existsSync(capabilitiesPath)) {
       try {
@@ -296,7 +299,12 @@ function buildContainerArgs(
 
   // Pass third-party integration credentials from .env to the container
   // Global credentials: available to all groups
-  const globalEnvKeys = ['JIRA_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN', 'PARALLEL_API_KEY'];
+  const globalEnvKeys = [
+    'JIRA_URL',
+    'JIRA_EMAIL',
+    'JIRA_API_TOKEN',
+    'PARALLEL_API_KEY',
+  ];
   const globalEnv = readEnvFile(globalEnvKeys);
   for (const key of globalEnvKeys) {
     if (globalEnv[key]) {
@@ -307,7 +315,12 @@ function buildContainerArgs(
   // Group-scoped credentials: injected only for groups that declare them in
   // data/groups/{folder}/env.json (array of env key names from .env).
   // Add/revoke credentials per group by editing that file — no code deploy needed.
-  const groupEnvConfigPath = path.join(DATA_DIR, 'groups', groupFolder, 'env.json');
+  const groupEnvConfigPath = path.join(
+    DATA_DIR,
+    'groups',
+    groupFolder,
+    'env.json',
+  );
   if (fs.existsSync(groupEnvConfigPath)) {
     try {
       const allowedKeys = JSON.parse(
@@ -323,7 +336,10 @@ function buildContainerArgs(
       }
     } catch {
       // env.json malformed — skip scoped credentials for this group
-      logger.warn({ groupFolder, path: groupEnvConfigPath }, 'Failed to read group env.json');
+      logger.warn(
+        { groupFolder, path: groupEnvConfigPath },
+        'Failed to read group env.json',
+      );
     }
   }
 
