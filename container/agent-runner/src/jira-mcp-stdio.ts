@@ -264,5 +264,79 @@ server.tool(
   },
 );
 
+server.tool(
+  'jira_link_issues',
+  'Create a link between two Jira issues (e.g. "blocks", "is caused by", "relates to"). Use for PRD-to-epic or epic-to-story traceability.',
+  {
+    inward_issue_key: z.string().describe('Inward issue key (e.g. the epic), e.g. "PM-10"'),
+    outward_issue_key: z.string().describe('Outward issue key (e.g. the story), e.g. "PM-42"'),
+    link_type: z.string().describe('Link type name: "Blocks", "Cloners", "Duplicate", "Relates" (or custom names configured in Jira)').default('Relates'),
+  },
+  async ({ inward_issue_key, outward_issue_key, link_type }) => {
+    try {
+      await jiraRequest('/issueLink', 'POST', {
+        type: { name: link_type },
+        inwardIssue: { key: inward_issue_key },
+        outwardIssue: { key: outward_issue_key },
+      });
+      return { content: [{ type: 'text' as const, text: `Linked ${inward_issue_key} → ${outward_issue_key} (${link_type}).` }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+server.tool(
+  'jira_get_boards',
+  'List Jira boards (Scrum/Kanban). Use to find board IDs for sprint queries.',
+  {
+    project_key: z.string().optional().describe('Filter by project key'),
+    type: z.enum(['scrum', 'kanban']).optional().describe('Filter by board type'),
+  },
+  async ({ project_key, type }) => {
+    try {
+      const params = new URLSearchParams();
+      if (project_key) params.set('projectKeyOrId', project_key);
+      if (type) params.set('type', type);
+      const qs = params.toString();
+      // Agile REST API uses a different base path
+      const url = `${JIRA_URL}/rest/agile/1.0/board${qs ? `?${qs}` : ''}`;
+      const res = await fetch(url, {
+        headers: {
+          Authorization: authHeader,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Jira Agile API error ${res.status}: ${text}`);
+      }
+      const data = await res.json();
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+server.tool(
+  'jira_get_issue_links',
+  'Get all links for a Jira issue (blocks, relates to, etc.). Useful for tracing dependencies.',
+  {
+    issue_key: z.string().describe('Issue key, e.g. "PM-42"'),
+  },
+  async ({ issue_key }) => {
+    try {
+      const data = (await jiraRequest(`/issue/${encodeURIComponent(issue_key)}?fields=issuelinks`)) as {
+        fields: { issuelinks: unknown[] };
+      };
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data.fields.issuelinks, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);

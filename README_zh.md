@@ -166,7 +166,6 @@ ANTHROPIC_AUTH_TOKEN=your-token-here
 ```
 
 这使您能够使用：
-- 通过 [Ollama](https://ollama.ai) 配合 API 代理运行的本地模型
 - 托管在 [Together AI](https://together.ai)、[Fireworks](https://fireworks.ai) 等平台上的开源模型
 - 兼容 Anthropic API 格式的自定义模型部署
 

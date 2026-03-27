@@ -211,14 +211,18 @@ function buildVolumeMounts(
   });
 
   // Gmail credentials directory (for Gmail MCP inside the container)
-  const homeDir = os.homedir();
-  const gmailDir = path.join(homeDir, '.gmail-mcp');
-  if (fs.existsSync(gmailDir)) {
-    mounts.push({
-      hostPath: gmailDir,
-      containerPath: '/home/node/.gmail-mcp',
-      readonly: false, // MCP may need to refresh OAuth tokens
-    });
+  // Only mounted for groups with Gmail capability or main channel.
+  const gmailCreds = resolveGroupCredentials(group.folder, isMain);
+  if (gmailCreds.needsGmail) {
+    const homeDir = os.homedir();
+    const gmailDir = path.join(homeDir, '.gmail-mcp');
+    if (fs.existsSync(gmailDir)) {
+      mounts.push({
+        hostPath: gmailDir,
+        containerPath: '/home/node/.gmail-mcp',
+        readonly: false, // MCP may need to refresh OAuth tokens
+      });
+    }
   }
 
   // Per-group IPC namespace: each group gets its own IPC directory
@@ -270,10 +274,109 @@ function buildVolumeMounts(
   return mounts;
 }
 
+interface CredentialScope {
+  envKeys: string[];
+  needsServiceAccount: boolean;
+  needsGmail: boolean;
+}
+
+/**
+ * Resolve which credentials a group is authorized to receive, based on
+ * capabilities.json credentialScopes. Main channel gets everything.
+ */
+function resolveGroupCredentials(
+  groupFolder: string,
+  isMain: boolean,
+): { envKeys: Set<string>; needsServiceAccount: boolean; needsGmail: boolean } {
+  const result = {
+    envKeys: new Set<string>(),
+    needsServiceAccount: false,
+    needsGmail: false,
+  };
+
+  // Main channel gets full access to all credentials (admin bypass)
+  if (isMain) {
+    const allKeys = [
+      'JIRA_URL',
+      'JIRA_EMAIL',
+      'JIRA_API_TOKEN',
+      'HUBSPOT_ACCESS_TOKEN',
+      'GOOGLE_CALENDAR_SUBJECT',
+    ];
+    allKeys.forEach((k) => result.envKeys.add(k));
+    result.needsServiceAccount = true;
+    result.needsGmail = true;
+    return result;
+  }
+
+  // Read capabilities.json to determine which credentials this group needs
+  const capabilitiesPath = path.join(
+    process.cwd(),
+    'container',
+    'skills',
+    'channel-routing',
+    'capabilities.json',
+  );
+  if (fs.existsSync(capabilitiesPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(capabilitiesPath, 'utf-8')) as {
+        capabilities: Record<string, { allowedGroups: string[] }>;
+        credentialScopes?: Record<string, CredentialScope>;
+      };
+
+      // Find capabilities this group holds
+      const groupCapabilities = Object.entries(config.capabilities)
+        .filter(([, cap]) => cap.allowedGroups.includes(groupFolder))
+        .map(([name]) => name);
+
+      // Aggregate credentials from all held capabilities
+      for (const capName of groupCapabilities) {
+        const scope = config.credentialScopes?.[capName];
+        if (!scope) continue;
+        scope.envKeys.forEach((k) => result.envKeys.add(k));
+        if (scope.needsServiceAccount) result.needsServiceAccount = true;
+        if (scope.needsGmail) result.needsGmail = true;
+      }
+    } catch {
+      logger.warn(
+        { groupFolder },
+        'Failed to read capabilities.json for credential scoping',
+      );
+    }
+  }
+
+  // Group-scoped env.json overrides: additional credentials declared per-group.
+  // This is a fallback mechanism for groups not covered by capabilities.json.
+  const groupEnvConfigPath = path.join(
+    DATA_DIR,
+    'groups',
+    groupFolder,
+    'env.json',
+  );
+  if (fs.existsSync(groupEnvConfigPath)) {
+    try {
+      const allowedKeys = JSON.parse(
+        fs.readFileSync(groupEnvConfigPath, 'utf-8'),
+      ) as string[];
+      if (Array.isArray(allowedKeys)) {
+        allowedKeys.forEach((k) => result.envKeys.add(k));
+      }
+    } catch {
+      logger.warn(
+        { groupFolder, path: groupEnvConfigPath },
+        'Failed to read group env.json',
+      );
+    }
+  }
+
+  return result;
+}
+
 function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
   groupFolder: string,
+  isMain: boolean,
 ): string[] {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
@@ -297,58 +400,32 @@ function buildContainerArgs(
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
   }
 
-  // Pass third-party integration credentials from .env to the container
-  // Global credentials: available to all groups
-  const globalEnvKeys = [
-    'JIRA_URL',
-    'JIRA_EMAIL',
-    'JIRA_API_TOKEN',
-    'PARALLEL_API_KEY',
-  ];
-  const globalEnv = readEnvFile(globalEnvKeys);
-  for (const key of globalEnvKeys) {
-    if (globalEnv[key]) {
-      args.push('-e', `${key}=${globalEnv[key]}`);
+  // Capability-scoped credential injection: each group only receives the
+  // credentials it needs based on its capabilities in capabilities.json.
+  // Main channel gets everything (admin bypass). This prevents data leakage
+  // between channels — e.g. PM channel won't have HubSpot tools, CRM channel
+  // won't have Jira tools.
+  const creds = resolveGroupCredentials(groupFolder, isMain);
+
+  if (creds.envKeys.size > 0) {
+    const scopedEnv = readEnvFile([...creds.envKeys]);
+    for (const key of creds.envKeys) {
+      if (scopedEnv[key]) {
+        args.push('-e', `${key}=${scopedEnv[key]}`);
+      }
     }
   }
 
-  // Group-scoped credentials: injected only for groups that declare them in
-  // data/groups/{folder}/env.json (array of env key names from .env).
-  // Add/revoke credentials per group by editing that file — no code deploy needed.
-  const groupEnvConfigPath = path.join(
-    DATA_DIR,
-    'groups',
-    groupFolder,
-    'env.json',
-  );
-  if (fs.existsSync(groupEnvConfigPath)) {
-    try {
-      const allowedKeys = JSON.parse(
-        fs.readFileSync(groupEnvConfigPath, 'utf-8'),
-      ) as string[];
-      if (Array.isArray(allowedKeys) && allowedKeys.length > 0) {
-        const groupEnv = readEnvFile(allowedKeys);
-        for (const key of allowedKeys) {
-          if (groupEnv[key]) {
-            args.push('-e', `${key}=${groupEnv[key]}`);
-          }
-        }
-      }
-    } catch {
-      // env.json malformed — skip scoped credentials for this group
-      logger.warn(
-        { groupFolder, path: groupEnvConfigPath },
-        'Failed to read group env.json',
+  // Mount Google Service Account JSON only for groups that need it
+  // (GDrive, Calendar, PRD export). Without this file, those MCP servers
+  // won't start — hard enforcement, not prompt-level.
+  if (creds.needsServiceAccount) {
+    const saFile = path.join(process.cwd(), 'google-service-account.json');
+    if (fs.existsSync(saFile)) {
+      args.push(
+        ...readonlyMountArgs(saFile, '/workspace/google-service-account.json'),
       );
     }
-  }
-
-  // Mount Google Service Account JSON if present (read-only)
-  const saFile = path.join(process.cwd(), 'google-service-account.json');
-  if (fs.existsSync(saFile)) {
-    args.push(
-      ...readonlyMountArgs(saFile, '/workspace/google-service-account.json'),
-    );
   }
 
   // Runtime-specific args for host gateway resolution
@@ -391,7 +468,12 @@ export async function runContainerAgent(
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
-  const containerArgs = buildContainerArgs(mounts, containerName, group.folder);
+  const containerArgs = buildContainerArgs(
+    mounts,
+    containerName,
+    group.folder,
+    input.isMain,
+  );
 
   logger.debug(
     {

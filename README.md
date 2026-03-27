@@ -75,7 +75,7 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 - **Agent Swarms** - Spin up teams of specialized agents that collaborate on complex tasks
 - **MCP integrations** - Built-in Jira Cloud, HubSpot CRM, and Google Drive MCP servers available inside containers. Add credentials to `.env` and they're available to agents.
 - **Media processing** - Add voice transcription (`/add-voice-transcription`), image vision (`/add-image-vision`), and PDF reading (`/add-pdf-reader`) via skills
-- **Optional integrations** - Add Gmail (`/add-gmail`), X/Twitter (`/x-integration`), Parallel AI research (`/add-parallel`), local Ollama models (`/add-ollama-tool`), and more via skills
+- **Optional integrations** - Add Gmail (`/add-gmail`), X/Twitter (`/x-integration`), and more via skills
 
 ## Usage
 
@@ -179,7 +179,6 @@ ANTHROPIC_AUTH_TOKEN=your-token-here
 ```
 
 This allows you to use:
-- Local models via [Ollama](https://ollama.ai) with an API proxy
 - Open-source models hosted on [Together AI](https://together.ai), [Fireworks](https://fireworks.ai), etc.
 - Custom model deployments with Anthropic-compatible APIs
 

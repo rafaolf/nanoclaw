@@ -7,6 +7,14 @@ description: Enforce channel-based access control. Check BEFORE executing any ca
 
 You operate in a multi-channel environment where each channel has specific capabilities. **Before acting on any request**, check whether the current channel is authorized for that capability.
 
+## Enforcement model
+
+Access control is enforced at **two levels**:
+
+1. **Infrastructure level (hard)** — Credentials and file mounts are scoped per-group based on `capabilities.json → credentialScopes`. If your group doesn't have the CRM capability, the HubSpot MCP server literally does not start — the tools don't exist. You cannot bypass this.
+
+2. **Prompt level (soft)** — Even for general-purpose requests that don't require specific tools, you should respect channel boundaries and redirect users to the right channel.
+
 ## How to check
 
 1. Read the capabilities config:
@@ -50,9 +58,10 @@ Use these tiers to store capability-specific shared context (templates, baseline
 
 ## Customizing capabilities.json
 
-The `capabilities.json` file controls which groups can access which capabilities. To add or change routing:
+The `capabilities.json` file controls which groups can access which capabilities:
 
 - **capabilities**: Each key defines a capability with `name`, `description`, `allowedGroups` (list of group folder names), and `keywords` (trigger words).
+- **credentialScopes**: Maps each capability to the credentials it requires (`envKeys`, `needsServiceAccount`, `needsGmail`). Only groups holding a capability receive its credentials — this is enforced by the container runner at startup.
 - **groupDirectory**: Maps group folder names to user-friendly display names used in redirect messages.
 
 Edit `container/skills/channel-routing/capabilities.json` to match your channel setup.

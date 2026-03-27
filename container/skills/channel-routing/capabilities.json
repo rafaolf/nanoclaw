@@ -2,26 +2,76 @@
   "capabilities": {
     "crm": {
       "name": "CRM (HubSpot)",
-      "description": "Contacts, deals, companies, pipeline, sales data",
+      "description": "Contacts, deals, companies, pipeline, sales data, notes, activities",
       "allowedGroups": ["discord_crm"],
       "keywords": ["crm", "hubspot", "contact", "deal", "pipeline", "lead", "company", "sales", "prospect", "cliente", "negócio", "proposta", "funil"]
     },
     "pm": {
       "name": "Project Management",
-      "description": "Tasks, sprints, issues, project status, Jira",
+      "description": "Tasks, sprints, issues, project status, Jira, boards",
       "allowedGroups": ["discord_pm"],
-      "keywords": ["jira", "sprint", "task", "issue", "backlog", "kanban", "ticket", "bug", "story", "epic", "tarefa", "projeto"]
+      "keywords": ["jira", "sprint", "task", "issue", "backlog", "kanban", "ticket", "bug", "story", "epic", "board", "tarefa", "projeto"]
+    },
+    "prd": {
+      "name": "Product Requirements",
+      "description": "PRDs, feature specs, requirements, user stories, product planning",
+      "allowedGroups": ["discord_pm"],
+      "keywords": ["prd", "requirements", "product requirement", "feature spec", "user story", "acceptance criteria", "requisitos", "especificação"]
     },
     "commercial": {
       "name": "Commercial Proposals",
-      "description": "Proposals, quotes, pricing, contracts",
+      "description": "Proposals, quotes, pricing, contracts, documents",
       "allowedGroups": ["discord_commercial"],
       "keywords": ["proposal", "quote", "pricing", "contract", "proposta comercial", "orçamento", "contrato", "precificação"]
+    },
+    "calendar": {
+      "name": "Calendar",
+      "description": "Schedule, meetings, events, availability, free/busy",
+      "allowedGroups": ["whatsapp_main"],
+      "keywords": ["calendar", "schedule", "meeting", "event", "availability", "free slot", "busy", "agenda", "reunião", "compromisso", "calendário"]
+    },
+    "documents": {
+      "name": "Google Drive",
+      "description": "Documents, templates, proposals, presentations, spreadsheets",
+      "allowedGroups": ["discord_commercial", "discord_pm"],
+      "keywords": ["drive", "document", "template", "presentation", "spreadsheet", "documento", "modelo"]
+    }
+  },
+  "credentialScopes": {
+    "crm": {
+      "envKeys": ["HUBSPOT_ACCESS_TOKEN"],
+      "needsServiceAccount": false,
+      "needsGmail": false
+    },
+    "pm": {
+      "envKeys": ["JIRA_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
+      "needsServiceAccount": false,
+      "needsGmail": false
+    },
+    "prd": {
+      "envKeys": ["JIRA_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
+      "needsServiceAccount": true,
+      "needsGmail": false
+    },
+    "commercial": {
+      "envKeys": [],
+      "needsServiceAccount": true,
+      "needsGmail": true
+    },
+    "calendar": {
+      "envKeys": ["GOOGLE_CALENDAR_SUBJECT"],
+      "needsServiceAccount": true,
+      "needsGmail": false
+    },
+    "documents": {
+      "envKeys": [],
+      "needsServiceAccount": true,
+      "needsGmail": false
     }
   },
   "groupDirectory": {
     "discord_crm": "CRM",
-    "discord_pm": "PM",
+    "discord_pm": "PM / Product",
     "discord_commercial": "Commercial Proposals",
     "whatsapp_main": "Main (WhatsApp)"
   }

@@ -261,5 +261,132 @@ server.tool(
   }
 );
 
+server.tool(
+  'hubspot_get_contact',
+  'Get full details of a specific HubSpot contact by ID.',
+  {
+    contact_id: z.string().describe('HubSpot contact ID'),
+  },
+  async ({ contact_id }) => {
+    try {
+      const data = await hubspotRequest(
+        `/crm/v3/objects/contacts/${encodeURIComponent(contact_id)}?properties=firstname,lastname,email,phone,company,jobtitle,lifecyclestage,hs_lead_status,city,state,country,notes_last_updated`
+      );
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+server.tool(
+  'hubspot_update_contact',
+  'Update properties of an existing HubSpot contact.',
+  {
+    contact_id: z.string().describe('Contact ID'),
+    email: z.string().optional().describe('New email'),
+    firstname: z.string().optional().describe('New first name'),
+    lastname: z.string().optional().describe('New last name'),
+    phone: z.string().optional().describe('New phone'),
+    company: z.string().optional().describe('New company name'),
+    jobtitle: z.string().optional().describe('Job title'),
+    lifecyclestage: z.string().optional().describe('Lifecycle stage (subscriber, lead, opportunity, customer, etc.)'),
+  },
+  async ({ contact_id, ...props }) => {
+    try {
+      const properties: Record<string, string> = {};
+      for (const [k, v] of Object.entries(props)) {
+        if (v !== undefined) properties[k] = v;
+      }
+      await hubspotRequest(`/crm/v3/objects/contacts/${encodeURIComponent(contact_id)}`, 'PATCH', { properties });
+      return { content: [{ type: 'text' as const, text: `Contact ${contact_id} updated.` }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+server.tool(
+  'hubspot_get_notes',
+  'Get notes (engagements) associated with a CRM object. Use to review activity history.',
+  {
+    object_type: z.enum(['contacts', 'deals', 'companies']).describe('Object type'),
+    object_id: z.string().describe('Object ID'),
+    limit: z.number().optional().describe('Max results (default 10)'),
+  },
+  async ({ object_type, object_id, limit = 10 }) => {
+    try {
+      const data = await hubspotRequest(
+        `/crm/v3/objects/${object_type}/${encodeURIComponent(object_id)}/associations/notes?limit=${Math.min(limit, 50)}`
+      );
+      const noteIds = ((data as { results: { id: string }[] }).results ?? []).map(r => r.id);
+      if (noteIds.length === 0) {
+        return { content: [{ type: 'text' as const, text: 'No notes found.' }] };
+      }
+      const notes = await hubspotRequest('/crm/v3/objects/notes/batch/read', 'POST', {
+        inputs: noteIds.map(id => ({ id })),
+        properties: ['hs_note_body', 'hs_timestamp', 'hubspot_owner_id'],
+      });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(notes, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+server.tool(
+  'hubspot_add_note',
+  'Add a note to a contact, deal, or company. Use for logging calls, meetings, or observations.',
+  {
+    object_type: z.enum(['contacts', 'deals', 'companies']).describe('Object type to attach note to'),
+    object_id: z.string().describe('Object ID'),
+    body: z.string().describe('Note content (HTML supported)'),
+  },
+  async ({ object_type, object_id, body }) => {
+    try {
+      const singularType: Record<string, string> = { contacts: 'contact', deals: 'deal', companies: 'company' };
+      const data = await hubspotRequest('/crm/v3/objects/notes', 'POST', {
+        properties: {
+          hs_note_body: body,
+          hs_timestamp: new Date().toISOString(),
+        },
+        associations: [{
+          to: { id: object_id },
+          types: [{
+            associationCategory: 'HUBSPOT_DEFINED',
+            associationTypeId: singularType[object_type] === 'contact' ? 202
+              : singularType[object_type] === 'deal' ? 214
+              : 190,
+          }],
+        }],
+      });
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
+server.tool(
+  'hubspot_get_associations',
+  'Get objects associated with a given CRM record (e.g. contacts linked to a deal).',
+  {
+    object_type: z.enum(['contacts', 'deals', 'companies']).describe('Source object type'),
+    object_id: z.string().describe('Source object ID'),
+    to_object_type: z.enum(['contacts', 'deals', 'companies']).describe('Target object type'),
+    limit: z.number().optional().describe('Max results (default 20)'),
+  },
+  async ({ object_type, object_id, to_object_type, limit = 20 }) => {
+    try {
+      const data = await hubspotRequest(
+        `/crm/v3/objects/${object_type}/${encodeURIComponent(object_id)}/associations/${to_object_type}?limit=${Math.min(limit, 50)}`
+      );
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (err) {
+      return errorResult(err);
+    }
+  }
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);

@@ -197,7 +197,6 @@ ANTHROPIC_AUTH_TOKEN=your-token-here
 ```
 
 以下が使用可能です：
-- [Ollama](https://ollama.ai)とAPIプロキシ経由のローカルモデル
 - [Together AI](https://together.ai)、[Fireworks](https://fireworks.ai)等でホストされたオープンソースモデル
 - Anthropic互換APIのカスタムモデルデプロイメント
 

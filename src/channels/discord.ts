@@ -173,7 +173,7 @@ export class DiscordChannel implements Channel {
       logger.error({ err: err.message }, 'Discord client error');
     });
 
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
       this.client!.once(Events.ClientReady, (readyClient) => {
         logger.info(
           { username: readyClient.user.tag, id: readyClient.user.id },
@@ -186,7 +186,7 @@ export class DiscordChannel implements Channel {
         resolve();
       });
 
-      this.client!.login(this.botToken);
+      this.client!.login(this.botToken).catch(reject);
     });
   }
 

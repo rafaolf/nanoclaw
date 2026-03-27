@@ -56,7 +56,7 @@ Confirm which tool families are available:
 - **Web:** WebSearch, WebFetch
 - **Orchestration:** Task, TaskOutput, TaskStop, TeamCreate, TeamDelete, SendMessage
 - **MCP (nanoclaw):** send_message, schedule_task, list_tasks, pause_task, resume_task, cancel_task, update_task, register_group
-- **MCP (integrations):** Check which integration MCP servers are available — try calling a list/search tool from each. If it errors with "unknown tool", that integration is not configured.
+- **MCP (integrations):** Check which integration MCP servers are available — try calling a list/search tool from each. If it errors with "unknown tool", that integration is not configured. Possible integrations: jira, hubspot, gdrive, calendar, gmail.
 
 ### 5. Container utilities
 
@@ -93,7 +93,7 @@ Installed Skills:
 
 Tools:
 - Core: available   Web: available   Orchestration: available
-- MCP: nanoclaw, jira, hubspot, gdrive (list only those that respond)
+- MCP: nanoclaw, jira, hubspot, gdrive, calendar, gmail (list only those that respond)
 
 Container:
 - agent-browser: available / not installed

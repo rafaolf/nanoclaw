@@ -63,7 +63,6 @@ SECRET_KEYS = [
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_AUTH_TOKEN",
-    "OLLAMA_HOST",
 ]
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

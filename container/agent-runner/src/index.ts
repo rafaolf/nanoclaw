@@ -393,23 +393,20 @@ function buildMcpServers(mcpServerPath: string, containerInput: ContainerInput) 
           GOOGLE_SERVICE_ACCOUNT_PATH: '/workspace/google-service-account.json',
         },
       },
+      calendar: {
+        command: 'node',
+        args: [path.join(dir, 'calendar-mcp-stdio.js')],
+        env: {
+          GOOGLE_SERVICE_ACCOUNT_PATH: '/workspace/google-service-account.json',
+          ...(process.env.GOOGLE_CALENDAR_SUBJECT ? { GOOGLE_CALENDAR_SUBJECT: process.env.GOOGLE_CALENDAR_SUBJECT } : {}),
+          ...(process.env.TIMEZONE ? { TIMEZONE: process.env.TIMEZONE } : {}),
+        },
+      },
     } : {}),
     gmail: {
       command: 'npx',
       args: ['-y', '@gongrzhe/server-gmail-autoauth-mcp'],
     },
-    ...(process.env.PARALLEL_API_KEY ? {
-      'parallel-search': {
-        type: 'http' as const,
-        url: 'https://search-mcp.parallel.ai/mcp',
-        headers: { Authorization: `Bearer ${process.env.PARALLEL_API_KEY}` },
-      },
-      'parallel-task': {
-        type: 'http' as const,
-        url: 'https://task-mcp.parallel.ai/mcp',
-        headers: { Authorization: `Bearer ${process.env.PARALLEL_API_KEY}` },
-      },
-    } : {}),
   };
 }
 
@@ -517,9 +514,8 @@ async function runQuery(
         'mcp__nanoclaw__*',
         ...(process.env.JIRA_URL ? ['mcp__jira__*'] : []),
         ...(process.env.HUBSPOT_ACCESS_TOKEN ? ['mcp__hubspot__*'] : []),
-        ...(fs.existsSync('/workspace/google-service-account.json') ? ['mcp__gdrive__*'] : []),
+        ...(fs.existsSync('/workspace/google-service-account.json') ? ['mcp__gdrive__*', 'mcp__calendar__*'] : []),
         'mcp__gmail__*',
-        ...(process.env.PARALLEL_API_KEY ? ['mcp__parallel-search__*', 'mcp__parallel-task__*'] : []),
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
