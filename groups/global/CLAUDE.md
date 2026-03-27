@@ -119,6 +119,10 @@ For structured data, create dedicated files in your workspace:
 
 **Do not store credentials, API keys, or sensitive personal data in memory files.**
 
+## Language
+
+All reports, summaries, and automated messages must be in Brazilian Portuguese (PT-BR). Respond in the same language as the user when conversing; for scheduled or automated outputs, always use PT-BR.
+
 ## Message Formatting
 
 Format messages based on the channel you're responding to. Check your group folder name:

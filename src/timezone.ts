@@ -4,13 +4,13 @@
  */
 export function formatLocalTime(utcIso: string, timezone: string): string {
   const date = new Date(utcIso);
-  return date.toLocaleString('en-US', {
+  return date.toLocaleString('pt-BR', {
     timeZone: timezone,
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-    hour: 'numeric',
+    hour: '2-digit',
     minute: '2-digit',
-    hour12: true,
+    hour12: false,
   });
 }

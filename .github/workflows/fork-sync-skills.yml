@@ -4,12 +4,6 @@ on:
   # Triggered by upstream repo via repository_dispatch
   repository_dispatch:
     types: [upstream-main-updated]
-  # Fallback: run on a schedule in case dispatch isn't configured
-  schedule:
-    - cron: '0 */6 * * *'  # every 6 hours
-  # Also run when fork's main is pushed directly
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -125,22 +119,6 @@ jobs:
             if git diff --quiet "origin/$BRANCH"; then
               echo "$BRANCH is already up to date with main."
               SUCCEEDED="$SUCCEEDED $SKILL_NAME"
-              continue
-            fi
-
-            npm ci
-
-            if ! npm run build; then
-              echo "::warning::Build failed for $BRANCH"
-              git reset --hard "origin/$BRANCH"
-              FAILED="$FAILED $SKILL_NAME"
-              continue
-            fi
-
-            if ! npm test 2>/dev/null; then
-              echo "::warning::Tests failed for $BRANCH"
-              git reset --hard "origin/$BRANCH"
-              FAILED="$FAILED $SKILL_NAME"
               continue
             fi
 
